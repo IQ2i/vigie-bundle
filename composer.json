@@ -1,0 +1,80 @@
+{
+  "name": "iq2i/vigie-bundle",
+  "type": "symfony-bundle",
+  "description": "Emits who did what, when and from where in your Symfony application as ECS-formatted NDJSON, ready for a SIEM — an opt-in, GDPR-aware activity log",
+  "license": "MIT",
+  "keywords": [
+    "symfony",
+    "bundle",
+    "audit",
+    "activity-log",
+    "security",
+    "gdpr",
+    "siem",
+    "crowdsec",
+    "ecs",
+    "monolog"
+  ],
+  "require": {
+    "php": ">=8.3",
+    "monolog/monolog": "^3.0",
+    "psr/cache": "^2.0|^3.0",
+    "psr/event-dispatcher": "^1.0",
+    "psr/log": "^2.0|^3.0",
+    "symfony/clock": "^6.4|^7.4|^8.0",
+    "symfony/config": "^6.4|^7.4|^8.0",
+    "symfony/dependency-injection": "^6.4|^7.4|^8.0",
+    "symfony/event-dispatcher": "^6.4|^7.4|^8.0",
+    "symfony/http-foundation": "^6.4|^7.4|^8.0",
+    "symfony/http-kernel": "^6.4|^7.4|^8.0"
+  },
+  "require-dev": {
+    "friendsofphp/php-cs-fixer": "^3.52",
+    "masterminds/html5": "^2.7.5",
+    "phpstan/phpstan": "^2.2.2",
+    "phpstan/phpstan-symfony": "^2.0",
+    "phpunit/phpunit": "^10.5",
+    "symfony/browser-kit": "^6.4|^7.4|^8.0",
+    "symfony/cache": "^6.4|^7.4|^8.0",
+    "symfony/console": "^6.4|^7.4|^8.0",
+    "symfony/framework-bundle": "^6.4|^7.4|^8.0",
+    "symfony/http-client": "^6.4|^7.4|^8.0",
+    "symfony/phpunit-bridge": "^7.4|^8.0",
+    "symfony/routing": "^6.4|^7.4|^8.0",
+    "symfony/security-bundle": "^6.4|^7.4|^8.0",
+    "symfony/twig-bundle": "^6.4|^7.4|^8.0",
+    "symfony/uid": "^6.4|^7.4|^8.0",
+    "symfony/web-profiler-bundle": "^6.4|^7.4|^8.0",
+    "twig/twig": "^3.4"
+  },
+  "suggest": {
+    "phpunit/phpunit": "To use the assertions shipped in IQ2i\\VigieBundle\\Test (see doc/testing.md)",
+    "symfony/console": "To use the vigie:* console commands",
+    "symfony/http-client": "To poll a SIEM's decisions with the built-in CrowdSec provider (see doc/threat.md)",
+    "symfony/monolog-bundle": "To configure a custom Monolog handler for iq2i_vigie.output.handlers (see doc/storage.md)",
+    "symfony/routing": "To redirect to a route from iq2i_vigie.threat.enforce.remediations, or to expose the threat ingest endpoint by importing @IQ2iVigieBundle/config/routes.php (see doc/threat.md)",
+    "symfony/security-csrf": "To record CSRF token failures outside the login form (see doc/recording.md)",
+    "symfony/security-http": "To track login, logout and switch user events",
+    "symfony/uid": "To generate RFC 4122 request ids for correlation instead of falling back to random bytes",
+    "symfony/web-profiler-bundle": "To show the Vigie panel in the debug toolbar"
+  },
+  "config": {
+    "sort-packages": true,
+    "policy": {
+      "advisories": {
+        "block": false
+      }
+    }
+  },
+  "autoload": {
+    "psr-4": {
+      "IQ2i\\VigieBundle\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "IQ2i\\VigieBundle\\Tests\\TestApplication\\": "tests/TestApplication/src",
+      "IQ2i\\VigieBundle\\Tests\\": "tests"
+    }
+  }
+}

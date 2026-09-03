@@ -1,0 +1,203 @@
+name: "Continuous Integration"
+
+on:
+    push:
+        branches:
+            - main
+    pull_request:
+        branches:
+            - main
+
+jobs:
+    composer-validate:
+        name: "Composer: validate"
+        runs-on: ubuntu-latest
+
+        steps:
+            - uses: actions/checkout@v6
+
+            - name: Setup PHP
+              uses: shivammathur/setup-php@v2
+              with:
+                  php-version: 8.4
+                  coverage: none
+
+            - name: Validate composer.json
+              run: composer validate --strict --no-check-lock
+
+            - name: Install dependencies
+              uses: ramsey/composer-install@v3
+
+            - name: Audit dependencies for known vulnerabilities
+              run: composer audit
+
+    php-cs-fixer:
+        name: "Coding standard"
+        runs-on: ubuntu-latest
+
+        steps:
+            - uses: actions/checkout@v6
+
+            - name: Setup PHP
+              uses: shivammathur/setup-php@v2
+              with:
+                  php-version: 8.4
+                  coverage: none
+
+            - name: Install dependencies
+              uses: ramsey/composer-install@v3
+
+            - name: PHP-CS-Fixer
+              run: php vendor/bin/php-cs-fixer fix --dry-run --diff --no-ansi
+
+    phpstan:
+        name: "PHPStan (${{ matrix.description }})"
+
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    # Latest supported dependencies
+                    -   php_version: "8.5"
+                        dependency_versions: "highest"
+                        description: "highest deps"
+                    # Lowest deps support
+                    -   php_version: "8.3"
+                        dependency_versions: "lowest"
+                        description: "lowest deps"
+
+        runs-on: ubuntu-latest
+
+        steps:
+            - uses: actions/checkout@v6
+
+            - name: Setup PHP
+              uses: shivammathur/setup-php@v2
+              with:
+                  php-version: ${{ matrix.php_version }}
+                  coverage: none
+
+            - name: Install dependencies
+              uses: ramsey/composer-install@v3
+              with:
+                  dependency-versions: ${{ matrix.dependency_versions }}
+
+            - name: PHPStan
+              run: php vendor/bin/phpstan analyse
+
+    phpunit:
+        name: "PHPUnit (${{ matrix.description }})"
+
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    # Latest Symfony version support
+                    -   os: ubuntu-latest
+                        php_version: "8.4"
+                        symfony_version: "8.0"
+                        stability: "stable"
+                        dependency_versions: "highest"
+                        description: "PHP 8.4, Symfony 8.0"
+                    # LTS Symfony version support
+                    -   os: ubuntu-latest
+                        php_version: "8.4"
+                        symfony_version: "7.4"
+                        stability: "stable"
+                        dependency_versions: "highest"
+                        description: "PHP 8.4, Symfony 7.4"
+                    # The lowest PHP version this bundle supports, exercised
+                    # against a recent Symfony instead of only --prefer-lowest
+                    # (below): the minimum PHP version is otherwise never
+                    # tested against anything but the oldest dependencies.
+                    -   os: ubuntu-latest
+                        php_version: "8.3"
+                        symfony_version: "7.4"
+                        stability: "stable"
+                        dependency_versions: "highest"
+                        description: "PHP 8.3, Symfony 7.4, highest deps"
+                    # Lowest deps support
+                    -   os: ubuntu-latest
+                        php_version: "8.3"
+                        symfony_version: "6.4"
+                        stability: "stable"
+                        dependency_versions: "lowest"
+                        description: "PHP 8.3, Symfony 6.4, lowest deps"
+                    # Upcoming Symfony versions
+                    -   os: ubuntu-latest
+                        php_version: "8.5"
+                        symfony_version: "8.0.x-dev"
+                        stability: "dev"
+                        dependency_versions: "highest"
+                        description: "PHP 8.5, Symfony 8.0.x-dev"
+
+        runs-on: ${{ matrix.os }}
+
+        steps:
+            -   uses: actions/checkout@v6
+
+            -   name: Setup PHP, with composer and extensions
+                uses: shivammathur/setup-php@v2
+                with:
+                    php-version: ${{ matrix.php_version }}
+                    coverage: none
+
+            -   name: symfony/flex is required to install the correct symfony version
+                if: ${{ matrix.symfony_version }}
+                run: |
+                    composer global config --no-plugins allow-plugins.symfony/flex true
+                    composer global require --no-progress --no-scripts --no-plugins symfony/flex
+
+            -   name: Configure Composer stability
+                run: |
+                    composer config minimum-stability ${{ matrix.stability }}
+
+            -   name: Configure Symfony version for symfony/flex
+                if: ${{ matrix.symfony_version }}
+                run: composer config extra.symfony.require "${{ matrix.symfony_version }}"
+
+            -   name: Pin specific package versions for this combination
+                if: ${{ matrix.pin_packages }}
+                run: composer require --no-update --no-progress ${{ matrix.pin_packages }}
+
+            -   name: Install dependencies
+                uses: ramsey/composer-install@v3
+                with:
+                    dependency-versions: ${{ matrix.dependency_versions }}
+                    custom-cache-suffix: ${{ matrix.php_version }}-${{ matrix.symfony_version }}-${{ matrix.dependency_versions }}
+
+            -   name: Test PHPUnit
+                run: |
+                    vendor/bin/phpunit
+
+    coverage:
+        name: "Coverage"
+        runs-on: ubuntu-latest
+
+        steps:
+            - uses: actions/checkout@v6
+
+            - name: Setup PHP, with pcov
+              uses: shivammathur/setup-php@v2
+              with:
+                  php-version: "8.4"
+                  coverage: pcov
+
+            - name: Install dependencies
+              uses: ramsey/composer-install@v3
+
+            - name: PHPUnit with coverage
+              run: vendor/bin/phpunit --coverage-clover=clover.xml
+
+            # PHPUnit has no "fail below X%" option — read the clover totals.
+            # Raise the floor only to a measured number.
+            - name: Enforce a coverage floor
+              run: |
+                  php -r '
+                  $xml = simplexml_load_file("clover.xml");
+                  $metrics = $xml->project->metrics;
+                  $percentage = (float) $metrics["coveredstatements"] / (float) $metrics["statements"] * 100;
+                  $floor = 95;
+                  printf("Line coverage: %.2f%% (floor: %d%%)\n", $percentage, $floor);
+                  exit($percentage < $floor ? 1 : 0);
+                  '

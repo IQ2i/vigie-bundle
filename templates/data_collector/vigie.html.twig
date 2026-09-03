@@ -1,0 +1,150 @@
+{% extends '@WebProfiler/Profiler/layout.html.twig' %}
+
+{% macro icon() %}
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z" />
+        <circle cx="12" cy="12" r="3" />
+    </svg>
+{% endmacro %}
+
+{% block toolbar %}
+    {% set status = collector.decision.recorded ? 'green' : '' %}
+    {% for activity in collector.activities %}
+        {% if activity.outcome == 'Failed' %}
+            {% set status = 'red' %}
+        {% endif %}
+    {% endfor %}
+
+    {% set icon %}
+        {{ _self.icon() }}
+        <span class="sf-toolbar-value">{{ collector.count }}</span>
+    {% endset %}
+
+    {% set text %}
+        <div class="sf-toolbar-info-piece">
+            <b>This request</b>
+            <span>{{ collector.decision.recorded ? 'Recorded' : 'Not recorded' }}</span>
+        </div>
+        <div class="sf-toolbar-info-piece">
+            <b>Activities</b>
+            <span>{{ collector.count }}</span>
+        </div>
+    {% endset %}
+
+    {{ include('@WebProfiler/Profiler/toolbar_item.html.twig', {link: profiler_url, status: status}) }}
+{% endblock %}
+
+{% block menu %}
+    <span class="label">
+        <span class="icon" aria-hidden="true">
+            {{ _self.icon() }}
+        </span>
+        <strong>Vigie</strong>
+        {% if collector.count > 0 %}
+            <span class="count">
+                <span>{{ collector.count }}</span>
+            </span>
+        {% endif %}
+    </span>
+{% endblock %}
+
+{% block panel %}
+    <h2>Vigie</h2>
+
+    <div class="metrics">
+        <div class="metric-group">
+            <div class="metric">
+                <span class="value">{{ collector.decision.recorded ? 'Yes' : 'No' }}</span>
+                <span class="label">Recorded</span>
+            </div>
+            <div class="metric">
+                <span class="value">{{ collector.decision.source }}</span>
+                <span class="label">Because</span>
+            </div>
+        </div>
+    </div>
+
+    {% if collector.decision.detail %}
+        <p>
+            <b>Detail:</b> {{ collector.decision.detail }}
+        </p>
+    {% endif %}
+
+    {% if not collector.decision.recorded %}
+        <div class="help">
+            <p>
+                Add <code>#[Track]</code> to the controller, or a pattern to <code>iq2i_vigie.http.recorded_paths</code>.
+            </p>
+        </div>
+    {% endif %}
+
+    <h2>Activities recorded during this request</h2>
+
+    {% if collector.activities is empty %}
+        <div class="empty empty-panel">
+            <p>No activity was submitted to the recorder during this request.</p>
+        </div>
+    {% else %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Type</th>
+                    <th>Action</th>
+                    <th>User</th>
+                    <th>IP</th>
+                    <th>Route / URI</th>
+                    <th>Status</th>
+                    <th>Subject</th>
+                    <th>Outcome</th>
+                    <th>Context</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for activity in collector.activities %}
+                    <tr>
+                        <td>{{ activity.type }}</td>
+                        <td>{{ activity.action ?? '-' }}</td>
+                        <td>{{ activity.user ?? '-' }}</td>
+                        <td>{{ activity.ip ?? '-' }}</td>
+                        <td>{{ activity.route ?? activity.uri ?? '-' }}</td>
+                        <td>{{ activity.status ?? '-' }}</td>
+                        <td>{{ activity.subject ?? '-' }}</td>
+                        <td>{{ activity.outcome }}</td>
+                        <td>{{ profiler_dump(activity.context) }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endif %}
+
+    <h2>
+        <a class="tab-control" href="#vigie-configuration">Configuration</a>
+    </h2>
+
+    <div class="sf-toggle-content sf-toggle-hidden" id="vigie-configuration">
+        <table>
+            <tbody>
+                <tr>
+                    <th>http.enabled</th>
+                    <td>{{ collector.config.http_enabled ? 'true' : 'false' }}</td>
+                </tr>
+                <tr>
+                    <th>http.recorded_paths</th>
+                    <td>{{ collector.config.recorded_paths|join(', ') ?: '-' }}</td>
+                </tr>
+                <tr>
+                    <th>http.ignored_paths</th>
+                    <td>{{ collector.config.ignored_paths|join(', ') ?: '-' }}</td>
+                </tr>
+                <tr>
+                    <th>record.ip_address</th>
+                    <td>{{ collector.config.ip_address_mode }}</td>
+                </tr>
+                <tr>
+                    <th>record.user_identifier</th>
+                    <td>{{ collector.config.user_identifier_mode }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+{% endblock %}

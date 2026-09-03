@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/IQ2i/vigie-bundle/blob/main/doc/schema/activity-2.0.json",
+  "title": "Vigie activity — ECS document",
+  "description": "One line of NDJSON produced by MonologActivityStorage/EcsFormatter from an IQ2i\\VigieBundle\\Monolog\\EcsDocument — an Elastic Common Schema (ECS) document, ecs.version 8.11.0. A field an activity has no value for is omitted, never emitted as null. Adding a field is minor; renaming or removing one is a breaking change and bumps this schema's own version.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["@timestamp", "message", "ecs", "event", "vigie"],
+  "properties": {
+    "@timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "The activity's occurredAt, RFC 3339 UTC with microseconds — not the moment the line was written (see event.created)."
+    },
+    "message": {
+      "type": "string",
+      "description": "A short, human-readable summary, e.g. \"login_failure jane.doe from 203.0.113.0\"."
+    },
+    "ecs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version"],
+      "properties": {
+        "version": { "type": "string", "const": "8.11.0" }
+      }
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "category", "type", "action", "id", "created", "dataset"],
+      "properties": {
+        "kind": { "type": "string", "const": "event" },
+        "category": { "type": "array", "items": { "type": "string" } },
+        "type": { "type": "array", "items": { "type": "string" } },
+        "outcome": { "type": "string", "enum": ["success", "failure"] },
+        "action": { "type": "string" },
+        "id": {
+          "type": "string",
+          "description": "Activity::$eventId (UUIDv7) — stable across storages and rotations."
+        },
+        "created": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the line was actually written — the storage's own clock, not occurredAt."
+        },
+        "dataset": { "type": "string", "const": "vigie.activity" }
+      }
+    },
+    "service": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "description": "iq2i_vigie.app." },
+        "environment": { "type": "string", "description": "iq2i_vigie.env." }
+      }
+    },
+    "user": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "description": "userIdentifier recorded in the clear." },
+        "hash": { "type": "string", "description": "userIdentifier recorded as an HMAC (record.user_identifier: hash)." },
+        "effective": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name"],
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "The real actor behind user.name/user.hash — context.impersonator or context.original_user, whichever the activity carries."
+            }
+          }
+        }
+      }
+    },
+    "user_agent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["original"],
+      "properties": {
+        "original": { "type": "string" }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["address"],
+      "properties": {
+        "address": { "type": "string", "description": "ipAddress verbatim, whatever record.ip_address produced." },
+        "ip": { "type": "string", "description": "Present only when \"address\" validates as an IP (a raw or anonymized value does; a hashed one would not)." }
+      }
+    },
+    "http": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "request": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "method": { "type": "string" },
+            "id": { "type": "string", "description": "The request id correlating this activity with others from the same request." }
+          }
+        },
+        "response": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status_code"],
+          "properties": {
+            "status_code": { "type": "integer" }
+          }
+        }
+      }
+    },
+    "url": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": { "type": "string" },
+        "query": { "type": "string", "description": "Present only when record.query_string kept it as part of the recorded uri." }
+      }
+    },
+    "related": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "user": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+        "ip": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+      }
+    },
+    "vigie": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["http_request", "login_success", "login_failure", "logout", "switch_user", "token_deauthenticated", "access_denied", "password_changed", "roles_changed", "csrf_failure", "custom"],
+          "description": "The raw ActivityType, for a lossless round-trip and for filters ECS's own event.* fields don't cover."
+        },
+        "route": { "type": "string" },
+        "firewall": { "type": "string" },
+        "session_id": { "type": "string", "description": "Always an HMAC." },
+        "subject": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "id"],
+          "properties": {
+            "type": { "type": "string" },
+            "id": { "type": "string" }
+          }
+        },
+        "context": { "type": "object", "description": "Scalars only." },
+        "remediation": { "type": "string", "description": "The remediation type Vigie enforced on this request (threat.enforce) — a scenario should exclude these lines to avoid feeding its own decisions back." }
+      }
+    }
+  }
+}
