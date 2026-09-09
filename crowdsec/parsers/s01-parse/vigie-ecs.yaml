@@ -1,0 +1,45 @@
+filter: "evt.Line.Labels.type == 'vigie_ecs'"
+onsuccess: next_stage
+name: local/vigie-ecs
+description: "Parse Vigie's ECS-formatted activity stream (vigie.jsonl) into evt.Meta"
+statics:
+  - target: evt.StrTime
+    expression: JsonExtract(evt.Line.Raw, "@timestamp")
+  - meta: vigie_type
+    expression: JsonExtract(evt.Line.Raw, "vigie.type")
+  # service.name (iq2i_vigie.app): which application emitted the line. Absent unless the app sets
+  # iq2i_vigie.app; only load-bearing when several applications' streams feed one CrowdSec instance,
+  # see doc/multi-tenant.md.
+  - meta: tenant
+    expression: JsonExtract(evt.Line.Raw, "service.name")
+  - meta: source_ip
+    expression: JsonExtract(evt.Line.Raw, "source.ip")
+  - meta: http_path
+    expression: JsonExtract(evt.Line.Raw, "url.path")
+  - meta: http_status
+    expression: JsonExtract(evt.Line.Raw, "http.response.status_code")
+  - meta: route
+    expression: JsonExtract(evt.Line.Raw, "vigie.route")
+  - meta: firewall
+    expression: JsonExtract(evt.Line.Raw, "vigie.firewall")
+  - meta: user_name
+    expression: JsonExtract(evt.Line.Raw, "user.name")
+  - meta: user_hash
+    expression: JsonExtract(evt.Line.Raw, "user.hash")
+  # Whichever of user.name/user.hash is actually populated (record.user_identifier: true vs "hash"):
+  # the one to compare against subject_owner, which goes through the exact same redaction. See
+  # doc/recording.md#subject.
+  - meta: user_identifier
+    expression: "JsonExtract(evt.Line.Raw, 'user.name') != '' ? JsonExtract(evt.Line.Raw, 'user.name') : JsonExtract(evt.Line.Raw, 'user.hash')"
+  - meta: user_effective_name
+    expression: JsonExtract(evt.Line.Raw, "user.effective.name")
+  - meta: subject_type
+    expression: JsonExtract(evt.Line.Raw, "vigie.subject.type")
+  - meta: subject_id
+    expression: JsonExtract(evt.Line.Raw, "vigie.subject.id")
+  - meta: subject_owner
+    expression: JsonExtract(evt.Line.Raw, "vigie.subject.owner")
+  - meta: remediation
+    expression: JsonExtract(evt.Line.Raw, "vigie.remediation")
+  - meta: event_outcome
+    expression: JsonExtract(evt.Line.Raw, "event.outcome")

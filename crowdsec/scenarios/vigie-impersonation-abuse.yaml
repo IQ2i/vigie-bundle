@@ -1,0 +1,12 @@
+type: leaky
+name: local/vigie-impersonation-abuse
+description: "Detect an abnormal rate of user impersonation (switch_user) performed by a single admin"
+filter: "evt.Meta.vigie_type == 'switch_user' && evt.Meta.remediation == ''"
+groupby: "evt.Meta.user_effective_name"
+capacity: 10
+leakspeed: "1m"
+blackhole: 5m
+labels:
+  service: symfony
+  type: impersonation_abuse
+  remediation: true

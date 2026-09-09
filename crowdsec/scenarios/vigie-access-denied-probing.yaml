@@ -1,0 +1,12 @@
+type: leaky
+name: local/vigie-access-denied-probing
+description: "Detect a burst of access_denied events from an already-authenticated user, probing for privilege escalation"
+filter: "evt.Meta.vigie_type == 'access_denied' && evt.Meta.remediation == ''"
+groupby: "evt.Meta.user_identifier"
+capacity: 10
+leakspeed: "30s"
+blackhole: 2m
+labels:
+  service: symfony
+  type: privilege_escalation
+  remediation: true

@@ -1,0 +1,14 @@
+type: leaky
+name: local/vigie-login-bruteforce
+description: "Detect repeated failed logins against a single account from a Vigie-instrumented Symfony app"
+# Excludes lines Vigie's own enforcement already answered (vigie.remediation), so a ban it enforces
+# never re-triggers the scenario that issued it. See doc/threat.md#enforcing-a-decision.
+filter: "evt.Meta.vigie_type == 'login_failure' && evt.Meta.remediation == ''"
+groupby: "evt.Meta.source_ip + '_' + evt.Meta.user_identifier"
+capacity: 5
+leakspeed: "10s"
+blackhole: 1m
+labels:
+  service: symfony
+  type: bruteforce
+  remediation: true

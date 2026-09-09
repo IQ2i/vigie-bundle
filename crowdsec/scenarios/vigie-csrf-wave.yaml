@@ -1,0 +1,12 @@
+type: leaky
+name: local/vigie-csrf-wave
+description: "Detect a wave of CSRF token failures from a single IP"
+filter: "evt.Meta.vigie_type == 'csrf_failure' && evt.Meta.remediation == ''"
+groupby: "evt.Meta.source_ip"
+capacity: 10
+leakspeed: "30s"
+blackhole: 2m
+labels:
+  service: symfony
+  type: csrf_attack
+  remediation: true

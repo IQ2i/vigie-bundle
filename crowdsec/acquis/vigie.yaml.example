@@ -1,0 +1,6 @@
+# /etc/crowdsec/acquis.d/vigie.yaml — see doc/siem.md and doc/multi-server.md for the syslog
+# alternative on a load-balanced fleet.
+filenames:
+  - /path/to/var/log/vigie.jsonl
+labels:
+  type: vigie_ecs

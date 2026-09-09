@@ -1,0 +1,11 @@
+name: iq2i/vigie
+description: "Parser and scenarios for the Vigie Symfony bundle's ECS activity stream"
+parsers:
+  - local/vigie-ecs
+scenarios:
+  - local/vigie-login-bruteforce
+  - local/vigie-credential-stuffing
+  - local/vigie-access-denied-probing
+  - local/vigie-csrf-wave
+  - local/vigie-impersonation-abuse
+  - local/vigie-idor-probing

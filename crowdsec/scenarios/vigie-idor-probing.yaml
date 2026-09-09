@@ -1,0 +1,16 @@
+type: leaky
+name: local/vigie-idor-probing
+description: >-
+  Detect repeated access to a resource not owned by the acting user (IDOR probing). Requires the
+  application to populate Subject::$owner (see doc/recording.md#subject) and, to ban on the real
+  source IP rather than a /24 or /64, "record.ip_address: true" (see
+  doc/threat.md#the-pseudonymization-pitfall).
+filter: "evt.Meta.subject_owner != '' && evt.Meta.subject_owner != evt.Meta.user_identifier && evt.Meta.remediation == ''"
+groupby: "evt.Meta.source_ip"
+capacity: 5
+leakspeed: "30s"
+blackhole: 2m
+labels:
+  service: symfony
+  type: idor
+  remediation: true
