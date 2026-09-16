@@ -76,7 +76,7 @@ layered entirely on top of (a): nothing about the activity log changes when this
 ## Documentation
 
 - [doc/recording.md](doc/recording.md): the `Activity` model, what's recorded automatically, your own
-  activities, processors
+  activities, processors, recording from a Messenger worker
 - [doc/storage.md](doc/storage.md): the default Monolog/ECS storage, writing to stdout, syslog or a custom
   handler, writing your own storage
 - [doc/siem.md](doc/siem.md): the ECS field mapping, CrowdSec acquisition, Elastic/Wazuh ingestion

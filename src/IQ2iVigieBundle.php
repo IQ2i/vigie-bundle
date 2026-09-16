@@ -46,6 +46,7 @@ use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
 use Symfony\Component\DependencyInjection\Reference;
 use Symfony\Component\HttpKernel\Bundle\AbstractBundle;
+use Symfony\Component\Messenger\Middleware\MiddlewareInterface;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
@@ -184,6 +185,13 @@ final class IQ2iVigieBundle extends AbstractBundle
                         ->booleanNode('record_csrf_failure')->defaultTrue()
                             ->info('Whether a false isTokenValid() on security.csrf.token_manager is recorded as csrf_failure. Requires symfony/security-csrf and framework.csrf_protection to be active; a no-op otherwise, independent of the "enabled" option above.')
                         ->end()
+                    ->end()
+                ->end()
+                ->arrayNode('messenger')
+                    ->addDefaultsIfNotSet()
+                    ->info('Correlates an activity recorded inside a Messenger handler with the request that dispatched the message (requestId, acting user). Requires symfony/messenger; a no-op otherwise. Off by default: the transport holds a raw (unredacted) user identifier once this is on. See doc/recording.md.')
+                    ->children()
+                        ->booleanNode('enabled')->defaultFalse()->end()
                     ->end()
                 ->end()
                 ->arrayNode('threat')
@@ -556,6 +564,17 @@ final class IQ2iVigieBundle extends AbstractBundle
         // Independent of security.enabled above: it decorates security.csrf.token_manager directly.
         if ($builder->hasDefinition(RecordingCsrfTokenManager::class) && !$securityConfig['record_csrf_failure']) {
             $builder->removeDefinition(RecordingCsrfTokenManager::class);
+        }
+
+        /** @var array{enabled: bool} $messengerConfig */
+        $messengerConfig = $config['messenger'];
+
+        if ($messengerConfig['enabled']) {
+            if (!interface_exists(MiddlewareInterface::class)) {
+                throw new \LogicException('iq2i_vigie.messenger.enabled is true but symfony/messenger is not installed. Try running "composer require symfony/messenger".');
+            }
+
+            $container->import(__DIR__.'/../config/services_messenger.php');
         }
 
         /** @var array{enabled: bool, provider: ?string, storage: ?string, cache: array{pool: string}, match: array{normalize_subject: bool, max_ranges: int, tenant_prefix: ?string}, enforce: array{enabled: bool, remediations: array<string, int|string>, exclude_paths: list<string>, country_header: ?string, asn_header: ?string}, ingest: array{enabled: bool, providers: array<string, string>, max_body_size: int, clock_skew: int}, crowdsec: array{url: string, api_key: ?string, scopes: list<string>, origins: list<string>, scenarios_containing: list<string>, timeout: float, http_client: ?string}} $threatConfig */
