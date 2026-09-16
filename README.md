@@ -1,21 +1,27 @@
 # Vigie Bundle
 
-Emits who did what, when and from where in your Symfony application: an opt-in, GDPR-aware activity log,
-written as ECS (Elastic Common Schema) NDJSON for a SIEM to consume. The application never queries it back
-itself.
+Know who did what, when and from where in your Symfony application: a structured, queryable activity log,
+written as ECS (Elastic Common Schema) NDJSON, with zero database. Install it on its own to get an
+activity log an admin backend or a support team can grep, `jq`, or ship to Elastic. The application never
+queries it back itself.
+
+And if you want to act on it: plug a SIEM behind the same stream and it becomes a detection/response
+loop, reading decisions back into the application. See [Two ways to use Vigie](#two-ways-to-use-vigie).
 
 - Records HTTP requests (opt-in), security events (login, logout, switch user) and your own business
   events, as a stream of `Activity` objects, immediately written out. See [doc/recording.md](doc/recording.md).
-- Reads back the decisions a SIEM (CrowdSec today) makes about suspicious IPs, ranges, sessions, users,
+- No database: activities are written through Monolog to a plain NDJSON file (the default), a stdout
+  stream for containers, or syslog for a load-balanced fleet. See [doc/multi-server.md](doc/multi-server.md).
+- Anonymizes IPs and hashes user/session identifiers by default (`record.*`) — privacy-preserving
+  defaults, not a compliance claim; Vigie does not make an application GDPR-compliant on its own.
+- Optionally reads back the decisions a SIEM makes about suspicious IPs, ranges, sessions, users,
   countries and AS numbers, through `ThreatCheckerInterface`, an opt-in enforcement listener, and a signed
   push endpoint for a SIEM that can't be polled. Nothing here is on unless you turn it on; see
   [doc/threat.md](doc/threat.md).
 - Ships no HTML dashboard, no read API, and no entity-change auditing. The ECS output is the interface; see
   [doc/siem.md](doc/siem.md) for consuming it, or
   [damienharper/auditor-bundle](https://github.com/DamienHarper/auditor-bundle) for entity diffs.
-- Requires PHP 8.3+ and Symfony 6.4/7.4/8.x. No database: activities are written through Monolog to a plain
-  NDJSON file (the default), a stdout stream for containers, or syslog for a load-balanced fleet. See
-  [doc/multi-server.md](doc/multi-server.md).
+- Requires PHP 8.3+ and Symfony 6.4/7.4/8.x.
 
 ## Quickstart
 
@@ -54,6 +60,18 @@ $this->recorder->custom('export.completed', ['rows' => 42]); // ActivityRecorder
 ```
 
 See [doc/recording.md](doc/recording.md) for processors, the `Subject`, and vetoing a recording.
+
+## Two ways to use Vigie
+
+**(a) Activity log only.** Install the bundle, opt controllers in with `#[Track]`, record your own
+events with `custom()`, and read `vigie.jsonl` with `jq`, tail it, or ship it to Elastic/Wazuh — see
+[doc/siem.md](doc/siem.md). This requires nothing from `threat.*`: no SIEM, no LAPI, no enforcement
+listener. A structured activity log is the whole deliverable.
+
+**(b) The full loop, with a SIEM.** Point CrowdSec (or another SIEM) at the same `vigie.jsonl`, let a
+scenario reason over it, and read decisions back into the application through
+`ThreatCheckerInterface` — see [doc/threat.md](doc/threat.md) and [crowdsec/](crowdsec). Opt-in,
+layered entirely on top of (a): nothing about the activity log changes when this is off.
 
 ## Documentation
 

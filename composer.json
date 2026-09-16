@@ -1,7 +1,7 @@
 {
   "name": "iq2i/vigie-bundle",
   "type": "symfony-bundle",
-  "description": "Emits who did what, when and from where in your Symfony application as ECS-formatted NDJSON, ready for a SIEM: an opt-in, GDPR-aware activity log",
+  "description": "A structured, queryable activity log for Symfony, written as ECS NDJSON with zero database — and, opt-in, a detection/response loop with a SIEM",
   "license": "MIT",
   "keywords": [
     "symfony",
@@ -9,10 +9,11 @@
     "audit",
     "activity-log",
     "security",
-    "gdpr",
+    "observability",
     "siem",
     "crowdsec",
     "ecs",
+    "ndjson",
     "monolog"
   ],
   "require": {
