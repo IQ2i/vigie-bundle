@@ -151,6 +151,86 @@ final class ThreatCheckerTest extends TestCase
         self::assertSame('error', $logger->records[0]['level']);
     }
 
+    public function testTenantPrefixIsAppliedAfterTheHashNotBeforeIt(): void
+    {
+        $normalizer = $this->normalizer(userIdentifier: 'hash');
+        $store = new InMemoryThreatDecisionStore();
+        // What a scenario grouping by evt.Meta.tenant + ':' + evt.Meta.user_identifier actually writes:
+        // the tenant prefix concatenated to the already-HMACed value, never a hash of the prefixed string.
+        $hashThenPrefix = 'acme:'.$normalizer->userIdentifier('jane.doe');
+        $store->apply('crowdsec', [$this->decision('1', ThreatScope::of('username'), $hashThenPrefix)], [], new \DateTimeImmutable());
+        $checker = new ThreatChecker($store, $normalizer, tenantPrefix: 'acme', clock: new MockClock('2026-08-21 10:00:00'));
+
+        self::assertCount(1, $checker->decisionsFor(new ThreatSubject(userIdentifier: 'jane.doe')));
+    }
+
+    public function testAPrefixBeforeHashDoesNotMatchVigiesOwnOrdering(): void
+    {
+        $normalizer = $this->normalizer(userIdentifier: 'hash');
+        $store = new InMemoryThreatDecisionStore();
+        // The wrong ordering the brief originally proposed: HMAC(tenant + ':' + value). Vigie applies
+        // the prefix after the hash, so a decision authored this way must never match.
+        $prefixThenHash = $normalizer->userIdentifier('acme:jane.doe');
+        $store->apply('crowdsec', [$this->decision('1', ThreatScope::of('username'), $prefixThenHash)], [], new \DateTimeImmutable());
+        $checker = new ThreatChecker($store, $normalizer, tenantPrefix: 'acme', clock: new MockClock('2026-08-21 10:00:00'));
+
+        self::assertSame([], $checker->decisionsFor(new ThreatSubject(userIdentifier: 'jane.doe')));
+    }
+
+    public function testTenantPrefixAppliesToSessionScopeToo(): void
+    {
+        $normalizer = $this->normalizer();
+        $store = new InMemoryThreatDecisionStore();
+        $value = 'acme:'.$normalizer->sessionId('raw-session-id');
+        $store->apply('crowdsec', [$this->decision('1', ThreatScope::of('session'), $value)], [], new \DateTimeImmutable());
+        $checker = new ThreatChecker($store, $normalizer, tenantPrefix: 'acme', clock: new MockClock('2026-08-21 10:00:00'));
+
+        self::assertCount(1, $checker->decisionsFor(new ThreatSubject(sessionId: 'raw-session-id')));
+    }
+
+    public function testTenantPrefixIsIgnoredWithoutConfiguration(): void
+    {
+        $normalizer = $this->normalizer();
+        $store = new InMemoryThreatDecisionStore();
+        $hash = $normalizer->userIdentifier('jane.doe');
+        $store->apply('crowdsec', [$this->decision('1', ThreatScope::of('username'), $hash)], [], new \DateTimeImmutable());
+        $checker = new ThreatChecker($store, $normalizer, clock: new MockClock('2026-08-21 10:00:00'));
+
+        self::assertCount(1, $checker->decisionsFor(new ThreatSubject(userIdentifier: 'jane.doe')));
+    }
+
+    public function testTenantPrefixCombinesWithNormalizeSubjectDisabled(): void
+    {
+        $normalizer = $this->normalizer(userIdentifier: 'hash');
+        $store = new InMemoryThreatDecisionStore();
+        // normalize_subject: false: the scenario itself must see plain-text identifiers, so the
+        // decision it wrote carries the plain value, only prefixed by the tenant.
+        $store->apply('crowdsec', [$this->decision('1', ThreatScope::of('username'), 'acme:jane.doe')], [], new \DateTimeImmutable());
+        $checker = new ThreatChecker($store, $normalizer, normalizeSubject: false, tenantPrefix: 'acme', clock: new MockClock('2026-08-21 10:00:00'));
+
+        self::assertCount(1, $checker->decisionsFor(new ThreatSubject(userIdentifier: 'jane.doe')));
+    }
+
+    /**
+     * @return iterable<string, array{0: ThreatScope, 1: string, 2: ThreatSubject}>
+     */
+    public static function unprefixedScopes(): iterable
+    {
+        yield 'an exact IP' => [ThreatScope::ip(), '1.2.3.4', new ThreatSubject(ip: '1.2.3.4')];
+        yield 'a country' => [ThreatScope::country(), 'FR', new ThreatSubject(country: 'FR')];
+        yield 'an AS number' => [ThreatScope::asn(), 'AS1234', new ThreatSubject(asn: 'AS1234')];
+    }
+
+    #[DataProvider('unprefixedScopes')]
+    public function testTenantPrefixNeverAppliesToIpRangeCountryOrAsnScopes(ThreatScope $scope, string $value, ThreatSubject $subject): void
+    {
+        $store = new InMemoryThreatDecisionStore();
+        $store->apply('crowdsec', [$this->decision('1', $scope, $value)], [], new \DateTimeImmutable());
+        $checker = new ThreatChecker($store, tenantPrefix: 'acme', clock: new MockClock('2026-08-21 10:00:00'));
+
+        self::assertCount(1, $checker->decisionsFor($subject));
+    }
+
     public function testTheStoreIsOnlyQueriedOncePerSubjectPerRequestUntilReset(): void
     {
         $store = new FindSpyThreatDecisionStore(static fn (): array => []);

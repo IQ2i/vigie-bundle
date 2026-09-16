@@ -119,6 +119,13 @@ iq2i_vigie:
             normalize_subject: true
             # Cap on how many "Range" decisions one IP lookup loads and tests.
             max_ranges: 5000
+            # Prefixes "session"/"username" lookups with "<value>:" before
+            # matching, for one CrowdSec instance shared across several
+            # applications. Applied after normalize_subject/the HMAC, never
+            # before. Never applies to Ip/Range/Country/AS. Null (the default)
+            # keeps single-tenant behavior unchanged; suggested value:
+            # "%iq2i_vigie.app%". See doc/multi-tenant.md.
+            tenant_prefix: null
 
         # Opt-in enforcement. See doc/threat.md.
         enforce:

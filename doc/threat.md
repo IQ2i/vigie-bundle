@@ -177,7 +177,8 @@ the plain-text value yourself.
   supply the value yourself, e.g. from a `Cf-IPCountry` header behind Cloudflare.
 - `AS`: same, for an AS number.
 - `session` / `username`: not CrowdSec constants, exact and case-sensitive, always normalized to
-  the HMAC before lookup.
+  the HMAC before lookup, then prefixed with `threat.match.tenant_prefix` (default `null`, i.e. no
+  prefix) if set. See [doc/multi-tenant.md](multi-tenant.md).
 
 Any other scope a provider emits is stored byte-for-byte and only found by an exact `value` lookup, never
 by IP: only `Ip` and `Range` decisions take part in an IP match, whatever their value looks like. A

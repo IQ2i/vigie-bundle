@@ -38,6 +38,7 @@ return static function (ContainerConfigurator $container): void {
         ->arg('$normalizer', service(QueryNormalizer::class))
         ->arg('$normalizeSubject', true)
         ->arg('$maxRanges', 5000)
+        ->arg('$tenantPrefix', null)
         ->tag('kernel.reset', ['method' => 'reset'])
         ->tag('monolog.logger', ['channel' => 'vigie']);
 
