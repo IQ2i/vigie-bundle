@@ -184,6 +184,13 @@ by IP: only `Ip` and `Range` decisions take part in an IP match, whatever their 
 decision missing a field or carrying an unreadable duration is skipped, counted and logged rather than
 stored, so one malformed entry never fails an entire sync.
 
+With CrowdSec, a `username`/`session` decision doesn't exist just because a scenario groups by one: the
+LAPI's **profiles**, not the scenario, decide a decision's scope, and the default profile only matches
+`Ip`. See [crowdsec/profiles/vigie.yaml](../crowdsec/profiles/vigie.yaml) and
+[crowdsec/README.md](../crowdsec/README.md#before-installing-things-that-silently-make-a-scenario-a-no-op)
+for the profile this bundle's user-keyed scenarios need, and `threat.crowdsec.scopes` below for the
+matching requirement on the read side.
+
 ## Operating `vigie:threat:sync`
 
 ```bash

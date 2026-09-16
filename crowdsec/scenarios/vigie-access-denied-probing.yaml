@@ -6,6 +6,12 @@ groupby: "evt.Meta.user_identifier"
 capacity: 10
 leakspeed: "30s"
 blackhole: 2m
+# Emits a username-scoped alert (Alert.GetScope() == "username", Alert.GetValue() == the groupby key
+# above), not the LAPI's default Ip scope. Requires a profile routing on that scope, see
+# crowdsec/profiles/vigie.yaml and crowdsec/README.md.
+scope:
+  type: username
+  expression: "evt.Meta.user_identifier"
 labels:
   service: symfony
   type: privilege_escalation

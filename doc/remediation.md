@@ -15,6 +15,11 @@ A ban on `Ip`/`Range` has no recipe here: enforcement (`threat.enforce.remediati
 usually paired with the reverse proxy or a CrowdSec bouncer in front of the application. These recipes cover
 what a proxy can't see: a `session` or a `username` scope.
 
+Both recipes below assume a `session`/`username` decision actually exists upstream. With CrowdSec, that
+decision only exists once a LAPI profile routes the scenario's alert to that scope — the scenario's own
+`groupby` isn't enough, see [crowdsec/profiles/vigie.yaml](../crowdsec/profiles/vigie.yaml) and
+[crowdsec/README.md](../crowdsec/README.md).
+
 ## Revoking a session (scope `session`)
 
 A `session`-scoped decision's value is the HMAC of the session id (`ThreatChecker` always normalizes it that

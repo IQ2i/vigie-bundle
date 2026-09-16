@@ -1,0 +1,15 @@
+# Prepend this profile to /etc/crowdsec/profiles.yaml, before the existing default_ip_remediation
+# profile (or whatever profile matches Alert.GetScope() == "Ip" there) — see crowdsec/README.md and
+# doc/multi-tenant.md#the-fix. `on_success: break` stops profile evaluation here so this profile alone
+# handles every username-scoped alert; the default profile still handles everything else.
+#
+# `decisions` deliberately omits scope/value: both are inherited from the alert, i.e. from the
+# scenario's own `scope` directive (see e.g. crowdsec/scenarios/vigie-idor-probing.yaml). This is what
+# lets an already-HMACed evt.Meta.user_identifier value flow through untouched into the decision.
+name: vigie_username_remediation
+filters:
+  - Alert.Remediation == true && Alert.GetScope() == "username"
+decisions:
+  - type: ban
+    duration: 4h
+on_success: break

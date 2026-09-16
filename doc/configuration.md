@@ -154,7 +154,10 @@ iq2i_vigie:
             # when threat.provider is "crowdsec".
             api_key: null
             # Scopes requested from the LAPI stream, sent verbatim. The LAPI
-            # itself defaults to "ip,range" only.
+            # itself defaults to "ip,range" only. Add "username" to actually
+            # pull the decisions crowdsec/scenarios' user-keyed scenarios
+            # produce, once a profile routes them there — see
+            # crowdsec/README.md and doc/threat.md#scopes.
             scopes: ['Ip', 'Range']
             # Restrict the stream to these decision origins. Empty means every origin.
             origins: []

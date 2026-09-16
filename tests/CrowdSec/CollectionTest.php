@@ -27,6 +27,12 @@ final class CollectionTest extends TestCase
 {
     private const CROWDSEC_DIR = __DIR__.'/../../crowdsec';
 
+    // The two scopes ThreatChecker::USER_SCOPE/SESSION_SCOPE know about, beyond the four canonical
+    // ones ThreatScope::of() folds (Ip, Range, Country, AS). A scenario's scope.type must be one of
+    // these or a canonical one; a profile filter (Alert.GetScope() == "...") must reference one of
+    // these to ever route a non-Ip decision.
+    private const NON_CANONICAL_SCOPES = ['username', 'session'];
+
     /**
      * @return array<string, mixed>
      */
@@ -131,6 +137,26 @@ final class CollectionTest extends TestCase
             $filter,
             'A scenario must exclude lines Vigie itself already enforced (vigie.remediation), or a ban keeps re-triggering the scenario that issued it.',
         );
+
+        /** @var array{remediation?: bool, service?: string} $labels */
+        $labels = $parsed['labels'] ?? [];
+        self::assertTrue(
+            $labels['remediation'] ?? false,
+            \sprintf('%s must set labels.remediation: true, or a LAPI profile filtering on Alert.Remediation == true never matches it.', $name),
+        );
+        self::assertNotEmpty($labels['service'] ?? null);
+
+        /** @var array{type?: string, expression?: string}|null $scope */
+        $scope = $parsed['scope'] ?? null;
+
+        if (null !== $scope) {
+            self::assertContains(
+                $scope['type'] ?? null,
+                self::NON_CANONICAL_SCOPES,
+                \sprintf('%s declares a scope.type not among %s, so no LAPI profile in profiles/vigie.yaml can route it and ThreatChecker never looks it up under that name.', $name, implode('/', self::NON_CANONICAL_SCOPES)),
+            );
+            self::assertNotEmpty($scope['expression'] ?? null);
+        }
     }
 
     #[DataProvider('scenarioFiles')]
@@ -181,5 +207,59 @@ final class CollectionTest extends TestCase
         $acquis = Yaml::parseFile(self::CROWDSEC_DIR.'/acquis/vigie.yaml.example');
 
         self::assertSame('vigie_ecs', $acquis['labels']['type'] ?? null);
+    }
+
+    public function testTheProfileYamlIsWellFormed(): void
+    {
+        $parsed = Yaml::parseFile(self::CROWDSEC_DIR.'/profiles/vigie.yaml');
+
+        self::assertIsArray($parsed);
+        self::assertIsString($parsed['name'] ?? null);
+
+        /** @var list<string> $filters */
+        $filters = $parsed['filters'] ?? [];
+        self::assertNotEmpty($filters, 'profiles/vigie.yaml must declare at least one filter.');
+    }
+
+    /**
+     * Every scope a profile filter routes on (Alert.GetScope() == "...") must be a scope at least one
+     * scenario actually declares, or the profile is dead weight: it will never see a matching alert.
+     */
+    public function testEveryProfileScopeMatchesAScenarioScope(): void
+    {
+        $profileContent = file_get_contents(self::CROWDSEC_DIR.'/profiles/vigie.yaml');
+        \assert(false !== $profileContent);
+
+        preg_match_all('/Alert\.GetScope\(\)\s*==\s*[\'"]([^\'"]+)[\'"]/', $profileContent, $profileMatches);
+        $profileScopes = array_unique($profileMatches[1]);
+
+        self::assertNotEmpty($profileScopes, 'profiles/vigie.yaml should route on at least one Alert.GetScope() filter.');
+
+        $files = glob(self::CROWDSEC_DIR.'/scenarios/*.yaml');
+        self::assertNotEmpty($files);
+
+        $scenarioScopes = [];
+
+        foreach ($files as $file) {
+            /** @var array{scope?: array{type?: string}} $parsed */
+            $parsed = Yaml::parseFile($file);
+            $type = $parsed['scope']['type'] ?? null;
+
+            if (null !== $type) {
+                $scenarioScopes[] = $type;
+            }
+        }
+
+        foreach ($profileScopes as $profileScope) {
+            if ('Ip' === $profileScope) {
+                continue; // The LAPI's own default scope, never declared explicitly by a scenario's scope directive.
+            }
+
+            self::assertContains(
+                $profileScope,
+                $scenarioScopes,
+                \sprintf('profiles/vigie.yaml routes on scope "%s", but no scenario in crowdsec/scenarios declares a scope.type of "%s".', $profileScope, $profileScope),
+            );
+        }
     }
 }
