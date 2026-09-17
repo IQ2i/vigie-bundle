@@ -28,6 +28,14 @@ final class ConfigurationTest extends FunctionalTestCase
 
         self::assertTrue(self::getContainer()->has(HttpActivitySubscriber::class));
         self::assertTrue(self::getContainer()->has(SecurityActivitySubscriber::class));
+        self::assertFalse(self::getContainer()->has('iq2i_vigie.messenger.activity_context'));
+    }
+
+    public function testTheMessengerCorrelationMiddlewareIsRegisteredOnlyWhenEnabled(): void
+    {
+        self::bootKernel(['environment' => 'messenger']);
+
+        self::assertTrue(self::getContainer()->has('iq2i_vigie.messenger.activity_context'));
     }
 
     public function testHttpTrackingCanBeDisabled(): void

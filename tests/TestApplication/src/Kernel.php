@@ -18,6 +18,7 @@ use IQ2i\VigieBundle\Tests\TestApplication\Controller\CsrfController;
 use IQ2i\VigieBundle\Tests\TestApplication\Controller\CustomActivityController;
 use IQ2i\VigieBundle\Tests\TestApplication\Controller\FailingController;
 use IQ2i\VigieBundle\Tests\TestApplication\Controller\ForbiddenController;
+use IQ2i\VigieBundle\Tests\TestApplication\Controller\MessengerDispatchController;
 use IQ2i\VigieBundle\Tests\TestApplication\Controller\PingController;
 use IQ2i\VigieBundle\Tests\TestApplication\Controller\PlainController;
 use IQ2i\VigieBundle\Tests\TestApplication\Controller\SecurityController;
@@ -114,6 +115,10 @@ final class Kernel extends SymfonyKernel
         if ('threat_ingest' === $this->getEnvironment()) {
             // Imported with a prefix, the way an application would import this file of its own.
             $routes->import('@IQ2iVigieBundle/config/routes.php')->prefix('/vigie');
+        }
+
+        if ('messenger' === $this->getEnvironment()) {
+            $routes->add('app_messenger_dispatch', '/messenger-dispatch')->controller(MessengerDispatchController::class);
         }
     }
 

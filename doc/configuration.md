@@ -49,7 +49,7 @@ iq2i_vigie:
     record:
         ip_address: anonymize  # true | false | 'anonymize' (the default)
         user_agent: true
-        user_identifier: true  # true | false | 'hash'
+        user_identifier: true  # true | false | 'hash' (a stable HMAC pseudonym, emitted as user.hash; see doc/recording.md)
         uri: true
         query_string: false    # keep the query string as part of "uri"; see doc/siem.md (url.query)
         route: true
@@ -94,6 +94,12 @@ iq2i_vigie:
         # framework.csrf_protection to be active; a no-op otherwise,
         # independent of the "enabled" option above.
         record_csrf_failure: true
+
+    # Correlates an activity recorded inside a Messenger handler with the
+    # request that dispatched the message (requestId, acting user). Requires
+    # symfony/messenger; a no-op otherwise. See doc/recording.md.
+    messenger:
+        enabled: false
 
     # Ingests the decisions a SIEM (CrowdSec today) hands back about suspicious
     # IPs, ranges, sessions, users, countries and AS numbers. See doc/threat.md.
@@ -203,6 +209,9 @@ iq2i_vigie:
   no such requirement.
 - `symfony/routing`: redirecting to a route from `threat.enforce.remediations`, and the threat ingest
   endpoint (`threat.ingest.enabled: true`). A `LogicException` at boot says so when either is on without it.
+- `symfony/messenger`: correlating an activity recorded inside a handler with the dispatching request
+  (`messenger.enabled: true`). Setting it without the package installed throws a `LogicException` at
+  boot. See [doc/recording.md](recording.md#recording-from-a-worker).
 
 ## Logging
 

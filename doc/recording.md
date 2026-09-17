@@ -139,8 +139,9 @@ final class SomeService
 `custom(string $action, array $context = [], ?Subject $subject = null)` fills in `occurredAt` and whatever
 the registered [processors](#processors) can find on their own (user, IP, session, request id) from the
 current request and security token. For anything a processor can't infer, recording on behalf of a
-different user, or from a context with no current request (a CLI command, a queue worker), build the
-`Activity` yourself and call `record()`:
+different user, or from a context with no current request at all (a CLI command), build the `Activity`
+yourself and call `record()`. A Messenger handler is a common case of "no current request" with its own
+dedicated answer instead, see [Recording from a worker](#recording-from-a-worker):
 
 ```php
 use IQ2i\VigieBundle\Model\Activity;
@@ -247,6 +248,64 @@ final readonly class TenantProcessor implements ActivityProcessorInterface
 Autoconfigured onto `ActivityProcessorInterface`, no manual tagging needed. An optional `priority` tag
 attribute controls order (higher runs first); a throwing processor never loses the activity, only what it
 would have added.
+
+## Recording from a worker
+
+An activity recorded from a Messenger handler has no request of its own: `RequestContextProcessor` and
+`TokenProcessor` above have nothing to read from, so `requestId` and `userIdentifier` are lost, and a
+business event recorded in a worker can't be correlated with the HTTP request (and the user) that
+dispatched the message.
+
+Opt in with `iq2i_vigie.messenger.enabled: true` (requires `symfony/messenger`; a no-op, and a clear
+`\LogicException` if it isn't installed, otherwise), then add the middleware this registers,
+`iq2i_vigie.messenger.activity_context`, to every bus that should carry the correlation:
+
+```yaml
+# config/packages/vigie.yaml
+iq2i_vigie:
+    messenger:
+        enabled: true
+```
+
+```yaml
+# config/packages/messenger.yaml
+framework:
+    messenger:
+        buses:
+            messenger.bus.default:
+                middleware:
+                    - iq2i_vigie.messenger.activity_context
+```
+
+On dispatch, if there is a current request and the envelope isn't stamped already, it's stamped with that
+request's `requestId` and the current security token's identifier
+(`IQ2i\VigieBundle\Messenger\ActivityContextStamp`). On the worker side, for the duration of the handler
+call, the same service (it is both the middleware and an `ActivityProcessorInterface`) exposes that stamp
+to `ActivityRecorder`'s processors — fill only, never overwrite, the same contract
+`RequestContextProcessor`/`TokenProcessor` already have. A `custom()` call inside the handler ends up
+carrying the originating request's `requestId`, correlating with the `http_request` line that request
+produced, and the acting user, with no change to the handler's own code.
+
+No IP on the stamp: it ages badly across retries (the client that made the original request may be long
+gone by the time a failed message is retried) and would duplicate a piece of personal data into the
+transport for no operational gain — a session or user identifier is enough to act on an account, which is
+what this correlation is for.
+
+The stamp carries the *raw* `userIdentifier`, not a redacted one, **whatever `record.user_identifier`
+is set to**: `record.*` applies at record time, as it does everywhere else, so with
+`record.user_identifier: hash` the log carries `user.hash` while the transport (Redis, AMQP, a database)
+carries the plain identifier between dispatch and that point. It has to: `ActivityRedactor` applies the
+mode unconditionally, so a stamp carrying the hash would be hashed again on the worker side and never
+match the `http_request` line's `user.hash`. Situate this honestly: a Messenger transport already carries
+the application's own payloads, identifiers and e-mail addresses included in most business messages, so
+the stamp adds one more occurrence of data the transport already holds, not a new class of it — which is
+why it isn't encrypted. If identifiers are sensitive (e-mail addresses), turn `record.user_identifier:
+hash` on for the log, see [doc/configuration.md](configuration.md); if the transport itself must never
+see one in the clear, the answer is the application's user identifier, an opaque `getUserIdentifier()`
+(a UUID), not something this bundle can decide. Know this before turning the toggle on with a transport
+an operator other than the application itself can read. Messenger re-dispatches a received envelope's
+stamps unchanged into a retry or a failure transport (only `DelayStamp`/`RedeliveryStamp` are rewritten),
+so the correlation survives retries the same way.
 
 ## Vetoing a recording
 
