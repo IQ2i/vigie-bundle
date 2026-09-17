@@ -6,6 +6,11 @@ groupby: "evt.Meta.user_effective_name"
 capacity: 10
 leakspeed: "1m"
 blackhole: 5m
+# Emits a username-scoped alert keyed on the impersonator, not the LAPI's default Ip scope. Requires
+# a profile routing on that scope, see crowdsec/profiles/vigie.yaml and crowdsec/README.md.
+scope:
+  type: username
+  expression: "evt.Meta.user_effective_name"
 labels:
   service: symfony
   type: impersonation_abuse

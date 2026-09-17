@@ -41,6 +41,7 @@ final class ThreatChecker implements ThreatCheckerInterface, ResetInterface
         private readonly ?QueryNormalizer $normalizer = null,
         private readonly bool $normalizeSubject = true,
         private readonly int $maxRanges = 5000,
+        private readonly ?string $tenantPrefix = null,
         private readonly ClockInterface $clock = new Clock(),
         private readonly ?LoggerInterface $logger = null,
     ) {
@@ -105,7 +106,7 @@ final class ThreatChecker implements ThreatCheckerInterface, ResetInterface
             // Normalized regardless of $normalizeSubject: session_id is always HMACed when Vigie records it.
             $scope = ThreatScope::of(self::SESSION_SCOPE);
             $value = $this->normalizer?->sessionId($subject->sessionId) ?? $subject->sessionId;
-            $this->collect($matching, new ThreatDecisionQuery(scopes: [$scope], value: $scope->normalizeValue($value), activeAt: $now));
+            $this->collect($matching, new ThreatDecisionQuery(scopes: [$scope], value: $scope->normalizeValue($this->prefix($value)), activeAt: $now));
         }
 
         if (null !== $subject->userIdentifier) {
@@ -113,7 +114,7 @@ final class ThreatChecker implements ThreatCheckerInterface, ResetInterface
             $value = $this->normalizeSubject && null !== $this->normalizer
                 ? $this->normalizer->userIdentifier($subject->userIdentifier)
                 : $subject->userIdentifier;
-            $this->collect($matching, new ThreatDecisionQuery(scopes: [$scope], value: $scope->normalizeValue($value), activeAt: $now));
+            $this->collect($matching, new ThreatDecisionQuery(scopes: [$scope], value: $scope->normalizeValue($this->prefix($value)), activeAt: $now));
         }
 
         if (null !== $subject->country) {
@@ -160,6 +161,17 @@ final class ThreatChecker implements ThreatCheckerInterface, ResetInterface
             null === $b->expiresAt => 1,
             default => $b->expiresAt <=> $a->expiresAt,
         };
+    }
+
+    /**
+     * threat.match.tenant_prefix, applied after QueryNormalizer/the HMAC, never before: a scenario
+     * grouping by evt.Meta.tenant + ':' + evt.Meta.user_identifier can only see the already-HMACed
+     * user_identifier (see doc/multi-tenant.md#the-fix), so prefixing the plain-text value first would
+     * produce a HMAC of the prefixed string instead, which never matches what the scenario wrote.
+     */
+    private function prefix(string $value): string
+    {
+        return null !== $this->tenantPrefix ? $this->tenantPrefix.':'.$value : $value;
     }
 
     private static function cacheKey(ThreatSubject $subject): string

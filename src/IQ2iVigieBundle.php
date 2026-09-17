@@ -220,6 +220,11 @@ final class IQ2iVigieBundle extends AbstractBundle
                                 ->integerNode('max_ranges')->defaultValue(5000)->min(1)
                                     ->info('Cap on how many "Range" decisions one IP lookup loads and tests.')
                                 ->end()
+                                ->scalarNode('tenant_prefix')
+                                    ->defaultNull()
+                                    ->info('Prefixes "session"/"username" lookups with "<value>:" before matching, so one CrowdSec instance shared across several applications never confuses their identifiers. Applied after normalize_subject/the HMAC, never before. Suggested value: "%iq2i_vigie.app%". Null (the default) keeps current single-tenant behavior. Never applies to Ip/Range/Country/AS. See doc/multi-tenant.md.')
+                                    ->validate()->always(self::validateTenantPrefix())->end()
+                                ->end()
                             ->end()
                         ->end()
                         ->arrayNode('enforce')
@@ -347,6 +352,28 @@ final class IQ2iVigieBundle extends AbstractBundle
     /**
      * @return \Closure(mixed): mixed
      */
+    private static function validateTenantPrefix(): \Closure
+    {
+        return static function (mixed $value): ?string {
+            if (null === $value) {
+                return null;
+            }
+
+            if (!\is_string($value) || '' === $value) {
+                throw new \InvalidArgumentException(\sprintf('iq2i_vigie.threat.match.tenant_prefix must be null or a non-empty string, got %s.', get_debug_type($value)));
+            }
+
+            if (str_contains($value, ':')) {
+                throw new \InvalidArgumentException('iq2i_vigie.threat.match.tenant_prefix must not contain ":", the reserved separator between the prefix and the identifier it namespaces.');
+            }
+
+            return $value;
+        };
+    }
+
+    /**
+     * @return \Closure(mixed): mixed
+     */
     private static function validateRemediations(): \Closure
     {
         return static function (mixed $remediations): array {
@@ -406,6 +433,12 @@ final class IQ2iVigieBundle extends AbstractBundle
         }
 
         $container->import(__DIR__.'/../config/services.php');
+
+        // So a config value can reference "%iq2i_vigie.app%" (e.g. threat.match.tenant_prefix)
+        // instead of repeating the "app" value verbatim.
+        /** @var ?string $app */
+        $app = $config['app'];
+        $builder->setParameter('iq2i_vigie.app', $app);
 
         /** @var ?string $rawStorage */
         $rawStorage = $config['storage'];
@@ -525,7 +558,7 @@ final class IQ2iVigieBundle extends AbstractBundle
             $builder->removeDefinition(RecordingCsrfTokenManager::class);
         }
 
-        /** @var array{enabled: bool, provider: ?string, storage: ?string, cache: array{pool: string}, match: array{normalize_subject: bool, max_ranges: int}, enforce: array{enabled: bool, remediations: array<string, int|string>, exclude_paths: list<string>, country_header: ?string, asn_header: ?string}, ingest: array{enabled: bool, providers: array<string, string>, max_body_size: int, clock_skew: int}, crowdsec: array{url: string, api_key: ?string, scopes: list<string>, origins: list<string>, scenarios_containing: list<string>, timeout: float, http_client: ?string}} $threatConfig */
+        /** @var array{enabled: bool, provider: ?string, storage: ?string, cache: array{pool: string}, match: array{normalize_subject: bool, max_ranges: int, tenant_prefix: ?string}, enforce: array{enabled: bool, remediations: array<string, int|string>, exclude_paths: list<string>, country_header: ?string, asn_header: ?string}, ingest: array{enabled: bool, providers: array<string, string>, max_body_size: int, clock_skew: int}, crowdsec: array{url: string, api_key: ?string, scopes: list<string>, origins: list<string>, scenarios_containing: list<string>, timeout: float, http_client: ?string}} $threatConfig */
         $threatConfig = $config['threat'];
 
         if (!$threatConfig['enabled'] && $threatConfig['enforce']['enabled']) {
@@ -551,7 +584,7 @@ final class IQ2iVigieBundle extends AbstractBundle
     }
 
     /**
-     * @param array{provider: ?string, storage: ?string, cache: array{pool: string}, match: array{normalize_subject: bool, max_ranges: int}, enforce: array{enabled: bool, remediations: array<string, int|string>, exclude_paths: list<string>, country_header: ?string, asn_header: ?string}, ingest: array{enabled: bool, providers: array<string, string>, max_body_size: int, clock_skew: int}, crowdsec: array{url: string, api_key: ?string, scopes: list<string>, origins: list<string>, scenarios_containing: list<string>, timeout: float, http_client: ?string}} $threatConfig
+     * @param array{provider: ?string, storage: ?string, cache: array{pool: string}, match: array{normalize_subject: bool, max_ranges: int, tenant_prefix: ?string}, enforce: array{enabled: bool, remediations: array<string, int|string>, exclude_paths: list<string>, country_header: ?string, asn_header: ?string}, ingest: array{enabled: bool, providers: array<string, string>, max_body_size: int, clock_skew: int}, crowdsec: array{url: string, api_key: ?string, scopes: list<string>, origins: list<string>, scenarios_containing: list<string>, timeout: float, http_client: ?string}} $threatConfig
      */
     private function loadThreatExtension(array $threatConfig, ContainerConfigurator $container, ContainerBuilder $builder): void
     {
@@ -583,7 +616,8 @@ final class IQ2iVigieBundle extends AbstractBundle
 
         $builder->getDefinition(ThreatChecker::class)
             ->setArgument('$normalizeSubject', $matchConfig['normalize_subject'])
-            ->setArgument('$maxRanges', $matchConfig['max_ranges']);
+            ->setArgument('$maxRanges', $matchConfig['max_ranges'])
+            ->setArgument('$tenantPrefix', $matchConfig['tenant_prefix']);
 
         $enforceConfig = $threatConfig['enforce'];
 

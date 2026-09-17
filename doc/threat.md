@@ -177,12 +177,20 @@ the plain-text value yourself.
   supply the value yourself, e.g. from a `Cf-IPCountry` header behind Cloudflare.
 - `AS`: same, for an AS number.
 - `session` / `username`: not CrowdSec constants, exact and case-sensitive, always normalized to
-  the HMAC before lookup.
+  the HMAC before lookup, then prefixed with `threat.match.tenant_prefix` (default `null`, i.e. no
+  prefix) if set. See [doc/multi-tenant.md](multi-tenant.md).
 
 Any other scope a provider emits is stored byte-for-byte and only found by an exact `value` lookup, never
 by IP: only `Ip` and `Range` decisions take part in an IP match, whatever their value looks like. A
 decision missing a field or carrying an unreadable duration is skipped, counted and logged rather than
 stored, so one malformed entry never fails an entire sync.
+
+With CrowdSec, a `username`/`session` decision doesn't exist just because a scenario groups by one: the
+LAPI's **profiles**, not the scenario, decide a decision's scope, and the default profile only matches
+`Ip`. See [crowdsec/profiles/vigie.yaml](../crowdsec/profiles/vigie.yaml) and
+[crowdsec/README.md](../crowdsec/README.md#before-installing-things-that-silently-make-a-scenario-a-no-op)
+for the profile this bundle's user-keyed scenarios need, and `threat.crowdsec.scopes` below for the
+matching requirement on the read side.
 
 ## Operating `vigie:threat:sync`
 

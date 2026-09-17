@@ -20,6 +20,7 @@ use IQ2i\VigieBundle\Security\RecordingCsrfTokenManager;
 use IQ2i\VigieBundle\Storage\ActivityStorageInterface;
 use IQ2i\VigieBundle\Storage\InMemoryActivityStorage;
 use IQ2i\VigieBundle\Storage\MonologActivityStorage;
+use IQ2i\VigieBundle\Threat\ThreatChecker;
 use Monolog\Handler\StreamHandler;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Config\FileLocator;
@@ -166,6 +167,53 @@ final class IQ2iVigieBundleTest extends TestCase
         $builder = $this->compiledContainer(['storage' => 'app.my_storage']);
 
         self::assertSame('app.my_storage', (string) $builder->getAlias(ActivityStorageInterface::class));
+    }
+
+    public function testTenantPrefixDefaultsToNull(): void
+    {
+        $builder = $this->compiledContainer(['threat' => ['enabled' => true]]);
+
+        self::assertNull($builder->getDefinition(ThreatChecker::class)->getArgument('$tenantPrefix'));
+    }
+
+    public function testTenantPrefixIsPassedToThreatChecker(): void
+    {
+        $builder = $this->compiledContainer(['threat' => ['enabled' => true, 'match' => ['tenant_prefix' => 'acme']]]);
+
+        self::assertSame('acme', $builder->getDefinition(ThreatChecker::class)->getArgument('$tenantPrefix'));
+    }
+
+    /**
+     * The literal parameter reference is preserved as-is here: compiledContainer() never calls
+     * compile(), so resolving "%iq2i_vigie.app%" against the "app" parameter is standard Symfony DI
+     * behavior this test doesn't need to re-verify, only that Vigie wires the raw config value through.
+     */
+    public function testTenantPrefixCanReferenceTheAppParameter(): void
+    {
+        $builder = $this->compiledContainer(['app' => 'acme', 'threat' => ['enabled' => true, 'match' => ['tenant_prefix' => '%iq2i_vigie.app%']]]);
+
+        self::assertSame('acme', $builder->getParameter('iq2i_vigie.app'));
+        self::assertSame('%iq2i_vigie.app%', $builder->getDefinition(ThreatChecker::class)->getArgument('$tenantPrefix'));
+    }
+
+    public function testAnEmptyTenantPrefixIsRejectedAsAConfigError(): void
+    {
+        $this->expectException(\Symfony\Component\Config\Definition\Exception\InvalidConfigurationException::class);
+        $this->expectExceptionMessageMatches('/iq2i_vigie\.threat\.match\.tenant_prefix must be null or a non-empty string/');
+
+        $this->compiledContainer(['threat' => ['enabled' => true, 'match' => ['tenant_prefix' => '']]]);
+    }
+
+    /**
+     * ":" is the reserved separator between the prefix and the identifier it namespaces
+     * (see doc/multi-tenant.md); a prefix containing one would make the resulting value ambiguous.
+     */
+    public function testATenantPrefixContainingTheSeparatorIsRejectedAsAConfigError(): void
+    {
+        $this->expectException(\Symfony\Component\Config\Definition\Exception\InvalidConfigurationException::class);
+        $this->expectExceptionMessageMatches('/iq2i_vigie\.threat\.match\.tenant_prefix must not contain ":"/');
+
+        $this->compiledContainer(['threat' => ['enabled' => true, 'match' => ['tenant_prefix' => 'acme:eu']]]);
     }
 
     /**
