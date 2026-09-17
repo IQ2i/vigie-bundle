@@ -291,12 +291,21 @@ gone by the time a failed message is retried) and would duplicate a piece of per
 transport for no operational gain — a session or user identifier is enough to act on an account, which is
 what this correlation is for.
 
-The stamp carries the *raw* `userIdentifier`, not a redacted one: `record.*` still applies at record
-time as it does everywhere else, but between dispatch and that point, the transport (Redis, AMQP, a
-database) holds an identifier it didn't hold before. Know this before turning the toggle on with a
-transport an operator other than the application itself can read. Messenger re-dispatches a received
-envelope's stamps unchanged into a retry or a failure transport (only `DelayStamp`/`RedeliveryStamp` are
-rewritten), so the correlation survives retries the same way.
+The stamp carries the *raw* `userIdentifier`, not a redacted one, **whatever `record.user_identifier`
+is set to**: `record.*` applies at record time, as it does everywhere else, so with
+`record.user_identifier: hash` the log carries `user.hash` while the transport (Redis, AMQP, a database)
+carries the plain identifier between dispatch and that point. It has to: `ActivityRedactor` applies the
+mode unconditionally, so a stamp carrying the hash would be hashed again on the worker side and never
+match the `http_request` line's `user.hash`. Situate this honestly: a Messenger transport already carries
+the application's own payloads, identifiers and e-mail addresses included in most business messages, so
+the stamp adds one more occurrence of data the transport already holds, not a new class of it — which is
+why it isn't encrypted. If identifiers are sensitive (e-mail addresses), turn `record.user_identifier:
+hash` on for the log, see [doc/configuration.md](configuration.md); if the transport itself must never
+see one in the clear, the answer is the application's user identifier, an opaque `getUserIdentifier()`
+(a UUID), not something this bundle can decide. Know this before turning the toggle on with a transport
+an operator other than the application itself can read. Messenger re-dispatches a received envelope's
+stamps unchanged into a retry or a failure transport (only `DelayStamp`/`RedeliveryStamp` are rewritten),
+so the correlation survives retries the same way.
 
 ## Vetoing a recording
 

@@ -49,7 +49,7 @@ iq2i_vigie:
     record:
         ip_address: anonymize  # true | false | 'anonymize' (the default)
         user_agent: true
-        user_identifier: true  # true | false | 'hash'
+        user_identifier: true  # true | false | 'hash' (a stable HMAC pseudonym, emitted as user.hash; see doc/recording.md)
         uri: true
         query_string: false    # keep the query string as part of "uri"; see doc/siem.md (url.query)
         route: true
