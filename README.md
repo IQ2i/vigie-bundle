@@ -12,8 +12,11 @@ loop, reading decisions back into the application. See [Two ways to use Vigie](#
   events, as a stream of `Activity` objects, immediately written out. See [doc/recording.md](doc/recording.md).
 - No database: activities are written through Monolog to a plain NDJSON file (the default), a stdout
   stream for containers, or syslog for a load-balanced fleet. See [doc/multi-server.md](doc/multi-server.md).
-- Anonymizes IPs and hashes user/session identifiers by default (`record.*`) — privacy-preserving
-  defaults, not a compliance claim; Vigie does not make an application GDPR-compliant on its own.
+- Anonymizes IPs (`record.ip_address: anonymize`) and always HMACs session ids by default; user
+  identifiers are recorded in the clear by default, and `record.user_identifier: hash` replaces them with
+  a stable, non-reversible pseudonym (`user.hash`) instead. Privacy-preserving defaults, not a compliance
+  claim: Vigie does not make an application GDPR-compliant on its own. See
+  [doc/configuration.md](doc/configuration.md).
 - Optionally reads back the decisions a SIEM makes about suspicious IPs, ranges, sessions, users,
   countries and AS numbers, through `ThreatCheckerInterface`, an opt-in enforcement listener, and a signed
   push endpoint for a SIEM that can't be polled. Nothing here is on unless you turn it on; see
