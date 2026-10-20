@@ -227,6 +227,31 @@ final class ThreatSynchronizerTest extends TestCase
         self::assertSame(['fake:1'], array_map(static fn (ThreatDecision $d): string => $d->key(), $observed->removed));
     }
 
+    public function testARemovedDecisionIsEnrichedFromTheStore(): void
+    {
+        $dispatcher = new EventDispatcher();
+        $observed = null;
+        $dispatcher->addListener(ThreatDecisionsSynced::class, static function (ThreatDecisionsSynced $event) use (&$observed): void {
+            $observed = $event;
+        });
+        $synchronizer = $this->synchronizer($dispatcher);
+
+        $expiresAt = new \DateTimeImmutable('+4 hours');
+        $full = new ThreatDecision('fake', '1', ThreatScope::ip(), '1.2.3.4', 'ban', new \DateTimeImmutable(), $expiresAt, 'crowdsec', 'local/vigie-login-bruteforce');
+        $this->provider->nextBatch = new ThreatSyncBatch(added: [$full]);
+        $synchronizer->sync();
+
+        // What the LAPI stream returns for a removal: an identity, nothing else.
+        $this->provider->nextBatch = new ThreatSyncBatch(removed: [$this->decision('1')]);
+        $synchronizer->sync();
+
+        self::assertInstanceOf(ThreatDecisionsSynced::class, $observed);
+        self::assertCount(1, $observed->removed);
+        self::assertSame('local/vigie-login-bruteforce', $observed->removed[0]->scenario);
+        self::assertSame('crowdsec', $observed->removed[0]->origin);
+        self::assertEquals($expiresAt, $observed->removed[0]->expiresAt);
+    }
+
     public function testApplyBatchWorksWithoutAProvider(): void
     {
         $synchronizer = new ThreatSynchronizer(null, $this->store);
