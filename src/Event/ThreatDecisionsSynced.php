@@ -22,6 +22,9 @@ use IQ2i\VigieBundle\Model\ThreatDecision;
  *
  * $added/$removed are never pseudonymized: they carry the decision exactly
  * as the SIEM reported it.
+ *
+ * $removed only lists decisions the store still held, a removal the SIEM
+ * reports again is not dispatched twice.
  */
 final readonly class ThreatDecisionsSynced
 {

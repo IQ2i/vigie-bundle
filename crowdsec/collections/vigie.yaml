@@ -2,6 +2,7 @@ name: iq2i/vigie
 description: "Parser and scenarios for the Vigie Symfony bundle's ECS activity stream"
 parsers:
   - local/vigie-ecs
+  - local/vigie-ecs-syslog
 scenarios:
   - local/vigie-login-bruteforce
   - local/vigie-credential-stuffing

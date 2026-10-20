@@ -46,13 +46,31 @@ cp parsers/s01-parse/vigie-ecs.yaml /etc/crowdsec/parsers/s01-parse/
 cp scenarios/*.yaml /etc/crowdsec/scenarios/
 cp collections/vigie.yaml /etc/crowdsec/collections/
 
-# profiles/vigie.yaml isn't a drop-in file: prepend it to the existing /etc/crowdsec/profiles.yaml,
-# before the profile matching Alert.GetScope() == "Ip" — see profiles/vigie.yaml for why the order matters.
+# profiles/vigie.yaml isn't a drop-in file: see "Installing the profile" below.
 
 systemctl reload crowdsec
 cscli parsers list      # local/vigie-ecs should show up
 cscli scenarios list    # the six local/vigie-* scenarios should show up
 ```
+
+### Installing the profile
+
+CrowdSec reads a single `profiles.yaml` (no `profiles.d`), so the Vigie profile has to be prepended to it,
+before the profile matching `Alert.GetScope() == "Ip"`. Rather than keeping a full copy of CrowdSec's
+defaults that drifts when they change, prepend it on the host with a script that is safe to run on every
+deploy (provisioning, a Docker entrypoint):
+
+```bash
+PROFILES=/etc/crowdsec/profiles.yaml
+VIGIE=/path/to/crowdsec/profiles/vigie.yaml
+
+if ! grep -q 'name: vigie_username_remediation' "$PROFILES"; then
+    { cat "$VIGIE"; printf '\n---\n'; cat "$PROFILES"; } > "$PROFILES.new" && mv "$PROFILES.new" "$PROFILES"
+fi
+```
+
+`profiles/vigie.yaml` starts with comments only, then one profile document; the `---` separator keeps the
+existing profiles as the following documents, in their original order. Reload CrowdSec afterwards.
 
 Then add `username` to `iq2i_vigie.threat.crowdsec.scopes` (default `['Ip', 'Range']`) so
 `vigie:threat:sync` actually pulls the decisions the profile above now produces:
@@ -66,9 +84,19 @@ iq2i_vigie:
 ```
 
 For a load-balanced fleet shipping to syslog instead of one file per node, see
-[doc/multi-server.md](../doc/multi-server.md#sending-to-syslog) and adjust `acquis/vigie.yaml.example`
-accordingly (a `type: syslog` datasource instead of `filenames`); the parser's `filter` still matches on
-`evt.Line.Labels.type`, set by whichever acquisition method is used.
+[doc/multi-server.md](../doc/multi-server.md#sending-to-syslog), then use the syslog variants instead of
+the file ones:
+
+```bash
+cp acquis/vigie-syslog.yaml.example /etc/crowdsec/acquis.d/vigie-syslog.yaml
+cp parsers/s01-parse/vigie-ecs-syslog.yaml /etc/crowdsec/parsers/s01-parse/
+cscli collections install crowdsecurity/linux   # provides crowdsecurity/syslog-logs, required
+```
+
+`vigie-ecs-syslog` filters on `evt.Parsed.program == 'vigie'` and reads the JSON from
+`evt.Parsed.message`, both only available once the hub parser `crowdsecurity/syslog-logs` has split the
+syslog header off, so that hub parser is a hard prerequisite, not an option. `vigie` is the handler's
+`ident`. Both parsers expose the same `evt.Meta` fields, so the scenarios work with either.
 
 For one CrowdSec instance shared across several client applications instead of one application's own
 fleet, see [doc/multi-tenant.md](../doc/multi-tenant.md): the scenarios here need adapting before that's
@@ -76,6 +104,8 @@ safe, since a `username`/`session` decision isn't namespaced by application as s
 
 ## What's here
 
+- `parsers/s01-parse/vigie-ecs-syslog.yaml`: the same mapping for lines received through CrowdSec's
+  `syslog` datasource, see above.
 - `parsers/s01-parse/vigie-ecs.yaml`: maps the ECS document's fields into `evt.Meta.*`
   (`vigie_type`, `tenant` (`service.name`, see [doc/multi-tenant.md](../doc/multi-tenant.md)),
   `source_ip`, `http_path`, `http_status`, `route`, `firewall`, `user_name`, `user_hash`,

@@ -1,0 +1,49 @@
+# Same fields as vigie-ecs.yaml, for lines received through CrowdSec's `syslog` datasource instead of a file.
+# Needs the hub parser crowdsecurity/syslog-logs (collection crowdsecurity/linux) to have run first: it
+# splits the syslog header off and leaves the JSON document in evt.Parsed.message, with the Monolog
+# handler's ident (the "vigie" of doc/storage.md) in evt.Parsed.program.
+filter: "evt.Parsed.program == 'vigie'"
+onsuccess: next_stage
+name: local/vigie-ecs-syslog
+description: "Parse Vigie's ECS-formatted activity stream received over syslog into evt.Meta"
+statics:
+  - target: evt.StrTime
+    expression: JsonExtract(evt.Parsed.message, "@timestamp")
+  - meta: vigie_type
+    expression: JsonExtract(evt.Parsed.message, "vigie.type")
+  # service.name (iq2i_vigie.app): which application emitted the line. Absent unless the app sets
+  # iq2i_vigie.app; only load-bearing when several applications' streams feed one CrowdSec instance,
+  # see doc/multi-tenant.md.
+  - meta: tenant
+    expression: JsonExtract(evt.Parsed.message, "service.name")
+  - meta: source_ip
+    expression: JsonExtract(evt.Parsed.message, "source.ip")
+  - meta: http_path
+    expression: JsonExtract(evt.Parsed.message, "url.path")
+  - meta: http_status
+    expression: JsonExtract(evt.Parsed.message, "http.response.status_code")
+  - meta: route
+    expression: JsonExtract(evt.Parsed.message, "vigie.route")
+  - meta: firewall
+    expression: JsonExtract(evt.Parsed.message, "vigie.firewall")
+  - meta: user_name
+    expression: JsonExtract(evt.Parsed.message, "user.name")
+  - meta: user_hash
+    expression: JsonExtract(evt.Parsed.message, "user.hash")
+  # Whichever of user.name/user.hash is actually populated (record.user_identifier: true vs "hash"):
+  # the one to compare against subject_owner, which goes through the exact same redaction. See
+  # doc/recording.md#subject.
+  - meta: user_identifier
+    expression: "JsonExtract(evt.Parsed.message, 'user.name') != '' ? JsonExtract(evt.Parsed.message, 'user.name') : JsonExtract(evt.Parsed.message, 'user.hash')"
+  - meta: user_effective_name
+    expression: JsonExtract(evt.Parsed.message, "user.effective.name")
+  - meta: subject_type
+    expression: JsonExtract(evt.Parsed.message, "vigie.subject.type")
+  - meta: subject_id
+    expression: JsonExtract(evt.Parsed.message, "vigie.subject.id")
+  - meta: subject_owner
+    expression: JsonExtract(evt.Parsed.message, "vigie.subject.owner")
+  - meta: remediation
+    expression: JsonExtract(evt.Parsed.message, "vigie.remediation")
+  - meta: event_outcome
+    expression: JsonExtract(evt.Parsed.message, "event.outcome")

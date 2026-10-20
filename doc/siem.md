@@ -67,8 +67,8 @@ wave, impersonation abuse, IDOR probing), plus the acquisition snippet and insta
 
 For a fleet of load-balanced servers, shipping straight to syslog instead of one file per node is usually a
 better fit than the file-based acquisition in [crowdsec/](../crowdsec). See
-[doc/multi-server.md](multi-server.md#sending-to-syslog) for the two transports, and a caveat on the same
-parser when CrowdSec's `syslog` datasource is the one acquiring the line instead of a file.
+[doc/multi-server.md](multi-server.md#sending-to-syslog) for the two transports, and the syslog variant of the
+parser CrowdSec's `syslog` datasource needs instead of the file one.
 
 ## Elastic ingestion
 

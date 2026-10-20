@@ -48,30 +48,65 @@ final class CollectionTest extends TestCase
     }
 
     /**
-     * @return list<string> every JsonExtract(evt.Line.Raw, "...") / '...' path in a file
+     * @return list<string> every JsonExtract(<source>, "...") / '...' path in a file
      */
-    private static function jsonExtractPaths(string $path): array
+    private static function jsonExtractPaths(string $path, string $source = 'evt.Line.Raw'): array
     {
         $content = file_get_contents($path);
         \assert(false !== $content);
 
-        preg_match_all('/JsonExtract\(evt\.Line\.Raw,\s*[\'"]([^\'"]+)[\'"]\)/', $content, $matches);
+        preg_match_all('/JsonExtract\('.preg_quote($source, '/').',\s*[\'"]([^\'"]+)[\'"]\)/', $content, $matches);
 
         return $matches[1];
     }
 
-    public function testTheParserYamlIsWellFormed(): void
+    /**
+     * @return iterable<string, array{string, string, string}> parser file, name, JSON source expression
+     */
+    public static function parsers(): iterable
     {
-        $parsed = Yaml::parseFile(self::CROWDSEC_DIR.'/parsers/s01-parse/vigie-ecs.yaml');
-
-        self::assertIsArray($parsed);
-        self::assertSame('local/vigie-ecs', $parsed['name'] ?? null);
+        yield 'file' => ['vigie-ecs.yaml', 'local/vigie-ecs', 'evt.Line.Raw'];
+        yield 'syslog' => ['vigie-ecs-syslog.yaml', 'local/vigie-ecs-syslog', 'evt.Parsed.message'];
     }
 
-    public function testEveryJsonExtractPathInTheParserExistsInTheSchema(): void
+    #[DataProvider('parsers')]
+    public function testTheParserYamlIsWellFormed(string $file, string $name): void
+    {
+        $parsed = Yaml::parseFile(self::CROWDSEC_DIR.'/parsers/s01-parse/'.$file);
+
+        self::assertIsArray($parsed);
+        self::assertSame($name, $parsed['name'] ?? null);
+    }
+
+    public function testTheSyslogParserFiltersOnTheSyslogProgram(): void
+    {
+        /** @var array{filter?: string} $parsed */
+        $parsed = Yaml::parseFile(self::CROWDSEC_DIR.'/parsers/s01-parse/vigie-ecs-syslog.yaml');
+
+        self::assertSame("evt.Parsed.program == 'vigie'", $parsed['filter'] ?? null);
+    }
+
+    public function testBothParsersExtractTheSameFieldsFromTheSamePaths(): void
+    {
+        $dir = self::CROWDSEC_DIR.'/parsers/s01-parse/';
+        $statics = static function (string $file) use ($dir): array {
+            /** @var array{statics: list<array{target?: string, meta?: string, expression: string}>} $parsed */
+            $parsed = Yaml::parseFile($dir.$file);
+
+            return array_map(
+                static fn (array $static): array => [$static['target'] ?? $static['meta'] ?? null, str_replace(['evt.Line.Raw', 'evt.Parsed.message'], 'SOURCE', $static['expression'])],
+                $parsed['statics'],
+            );
+        };
+
+        self::assertSame($statics('vigie-ecs.yaml'), $statics('vigie-ecs-syslog.yaml'));
+    }
+
+    #[DataProvider('parsers')]
+    public function testEveryJsonExtractPathInTheParserExistsInTheSchema(string $file, string $name, string $source): void
     {
         $properties = $this->schemaProperties();
-        $paths = self::jsonExtractPaths(self::CROWDSEC_DIR.'/parsers/s01-parse/vigie-ecs.yaml');
+        $paths = self::jsonExtractPaths(self::CROWDSEC_DIR.'/parsers/s01-parse/'.$file, $source);
 
         self::assertNotEmpty($paths, 'The parser should extract at least one field.');
 
@@ -184,7 +219,7 @@ final class CollectionTest extends TestCase
         /** @var array{parsers?: list<string>, scenarios?: list<string>} $collection */
         $collection = Yaml::parseFile(self::CROWDSEC_DIR.'/collections/vigie.yaml');
 
-        self::assertSame(['local/vigie-ecs'], $collection['parsers'] ?? null);
+        self::assertSame(['local/vigie-ecs', 'local/vigie-ecs-syslog'], $collection['parsers'] ?? null);
 
         $files = glob(self::CROWDSEC_DIR.'/scenarios/*.yaml');
         self::assertNotEmpty($files);
@@ -207,6 +242,16 @@ final class CollectionTest extends TestCase
         $acquis = Yaml::parseFile(self::CROWDSEC_DIR.'/acquis/vigie.yaml.example');
 
         self::assertSame('vigie_ecs', $acquis['labels']['type'] ?? null);
+    }
+
+    public function testTheSyslogAcquisExampleKeepsLinesWhole(): void
+    {
+        /** @var array{source?: string, max_message_len?: int, labels?: array{type?: string}} $acquis */
+        $acquis = Yaml::parseFile(self::CROWDSEC_DIR.'/acquis/vigie-syslog.yaml.example');
+
+        self::assertSame('syslog', $acquis['source'] ?? null);
+        self::assertSame('syslog', $acquis['labels']['type'] ?? null);
+        self::assertGreaterThanOrEqual(8192, $acquis['max_message_len'] ?? 0);
     }
 
     public function testTheProfileYamlIsWellFormed(): void

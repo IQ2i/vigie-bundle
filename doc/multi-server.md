@@ -38,6 +38,16 @@ different value on that node. There is no error: the lines are all individually 
 quietly stops working across that one node. Roll `APP_SECRET` (or `record.hash_secret`) on every node at
 once; a staggered rotation has the same effect as a misconfigured node until it finishes.
 
+## `record.ip_address` on the emitting kernel
+
+`vigie-login-bruteforce`, `vigie-credential-stuffing` and `vigie-csrf-wave` ban by `source_ip`. Vigie's
+default `record.ip_address: anonymize` masks the host part (`1.2.3.4` → `1.2.3.0`), so a scenario fed that
+output only sees a `/24`/`/64` and its decisions never match a real visitor, with no error anywhere. Set
+`record.ip_address: true` on **every kernel that emits to CrowdSec**. When the kernel running
+`vigie:threat:sync` is a different one from the emitter (a separate admin and manager application, say),
+the setting that matters is the emitter's, not the syncing kernel's. See
+[The pseudonymization pitfall](threat.md#the-pseudonymization-pitfall).
+
 ## `framework.trusted_proxies`
 
 Already covered in [doc/recording.md](recording.md#what-gets-recorded) and
@@ -82,6 +92,10 @@ iq2i_vigie:
   with the build machine's hostname instead of the node's own.
 - A string sets it explicitly: an env placeholder for a container whose own `gethostname()` is a
   throwaway id rather than a stable node name, `hostname: '%env(HOSTNAME)%'`.
+- Under Docker, `gethostname()` (and the `HOSTNAME` environment variable) is the container id, e.g.
+  `acd534a62d0c`, unless the service sets `hostname:` itself. Fine in production where containers are
+  replaced anyway, noisy in local development. Give the service a stable `hostname:` in `compose.yaml`, or
+  set `hostname: '%env(VIGIE_HOSTNAME)%'` per environment.
 - `false` omits `host.hostname` entirely, for a stream that leaves your infrastructure (a managed SIEM, a
   third party), where a server naming convention has no business being disclosed.
 
@@ -157,12 +171,13 @@ PHP sends RFC-framed UDP datagrams straight to a remote syslog server, CrowdSec'
 for instance:
 
 ```yaml
-# /etc/crowdsec/acquis.d/vigie.yaml
+# /etc/crowdsec/acquis.d/vigie-syslog.yaml
 source: syslog
 listen_addr: 0.0.0.0
 listen_port: 514
+max_message_len: 8192
 labels:
-  type: vigie_ecs
+  type: syslog
 ```
 
 Simpler, one moving part and nothing to run on the node beyond PHP itself, but be aware of what CrowdSec's
@@ -179,13 +194,18 @@ handler is first instantiated (the first recorded activity), not at container co
 ### The CrowdSec parser, either way
 
 The `vigie-ecs` parser in [doc/siem.md](siem.md#crowdsec-acquisition) is written against a plain NDJSON
-file: `evt.Line.Raw` is exactly one JSON document. With topology A that stays true, since rsyslog already
-stripped its own header before writing the file CrowdSec acquires. With topology B, whether the syslog
-datasource hands the parser the JSON alone or the JSON still wrapped in a syslog header is a detail of the
-CrowdSec version in use, verify it against your own instance before relying on the existing parser
-unchanged. A `JsonExtract` failing silently (every `parsed` field empty, no error logged) is the symptom of
-a header still attached. This is also an argument for preferring topology A outright: it sidesteps the
-question entirely.
+file: `evt.Line.Raw` is exactly one JSON document and the acquisition label is `vigie_ecs`. With topology A
+that stays true, since rsyslog already stripped its own header before writing the file CrowdSec acquires.
+
+With topology B it does not work as is. CrowdSec's `syslog` datasource labels every line `syslog`, and the
+JSON document only becomes available as `evt.Parsed.message` after the hub parser
+`crowdsecurity/syslog-logs` (collection `crowdsecurity/linux`) ran. Use
+[`vigie-ecs-syslog.yaml`](../crowdsec/parsers/s01-parse/vigie-ecs-syslog.yaml) instead: it filters on
+`evt.Parsed.program == 'vigie'` (the handler's `ident`, `vigie` in the examples above) and extracts the
+same `evt.Meta` fields, so the scenarios are unchanged. Pair it with
+[`vigie-syslog.yaml.example`](../crowdsec/acquis/vigie-syslog.yaml.example), which raises
+`max_message_len`. Symptom of using the file parser by mistake, or of a missing hub parser: events show up
+in `cscli metrics` as acquired but no `evt.Meta.*` is ever set, with no error logged.
 
 ## Keeping a line under 2048 bytes
 
