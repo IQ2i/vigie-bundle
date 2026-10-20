@@ -147,7 +147,9 @@ final class NotifyOnNewBans
 ```
 
 `$event->removed` only lists decisions the store still held: a removal the SIEM reports again on a later
-sync (CrowdSec's LAPI does) is dropped instead of being dispatched twice.
+sync (CrowdSec's LAPI does) is dropped instead of being dispatched twice. Each one is the decision as the
+store held it, so `scenario`, `origin` and `expiresAt` are available even though the LAPI only returns
+identifiers for removed entries.
 
 `$decision->value` here is exactly what the SIEM reported, an unmasked IP, a raw CIDR, never
 pseudonymized: `record.*` governs what Vigie itself emits (see [doc/configuration.md](configuration.md)), not what a

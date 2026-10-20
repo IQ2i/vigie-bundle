@@ -105,7 +105,8 @@ final readonly class ThreatSynchronizer
 
     /**
      * A provider may report the same removal again on a later delta (the LAPI does); only what the
-     * store still holds is a removal worth reporting.
+     * store still holds is a removal worth reporting. The stored decision replaces the provider's own
+     * entry, which often carries only an identity (the LAPI stream omits scenario, origin and duration).
      *
      * @param list<ThreatDecision> $removed
      *
@@ -120,7 +121,7 @@ final readonly class ThreatSynchronizer
 
             foreach ($stored as $candidate) {
                 if ($candidate->key() === $decision->key()) {
-                    $held[] = $decision;
+                    $held[] = $candidate;
 
                     break;
                 }

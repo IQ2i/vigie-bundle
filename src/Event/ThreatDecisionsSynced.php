@@ -24,7 +24,9 @@ use IQ2i\VigieBundle\Model\ThreatDecision;
  * as the SIEM reported it.
  *
  * $removed only lists decisions the store still held, a removal the SIEM
- * reports again is not dispatched twice.
+ * reports again is not dispatched twice, and each one is the decision as
+ * stored (scenario, origin, expiresAt included), not the bare identity a
+ * SIEM's removal entry may be limited to.
  */
 final readonly class ThreatDecisionsSynced
 {
