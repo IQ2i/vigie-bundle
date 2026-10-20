@@ -17,7 +17,7 @@ use Monolog\Formatter\FormatterInterface;
 use Monolog\Handler\HandlerInterface;
 use Monolog\Handler\NullHandler;
 use Monolog\Handler\SyslogHandler;
-use Monolog\Handler\SyslogUdpHandler;
+use Psr\Log\LoggerInterface;
 
 /**
  * Builds the handler behind iq2i_vigie.output.syslog. Every argument may come from an env placeholder, so it
@@ -35,6 +35,7 @@ final class SyslogHandlerFactory
         string $ident,
         int|string $maxLength,
         FormatterInterface $formatter,
+        ?LoggerInterface $logger = null,
     ): HandlerInterface {
         // Checked before anything is instantiated: SyslogUdpHandler throws at construction without ext-sockets.
         if (!filter_var($enabled, \FILTER_VALIDATE_BOOL)) {
@@ -47,7 +48,7 @@ final class SyslogHandlerFactory
 
         $handler = null === $host || '' === $host
             ? new SyslogHandler($ident, $facility)
-            : new SyslogUdpHandler($host, (int) $port, $facility, ident: $ident, maxLength: (int) $maxLength);
+            : new OversizeAwareSyslogUdpHandler($host, (int) $port, $facility, $ident, (int) $maxLength, $logger);
 
         return $handler->setFormatter($formatter);
     }

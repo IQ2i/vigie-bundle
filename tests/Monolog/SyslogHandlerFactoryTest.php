@@ -14,10 +14,10 @@ declare(strict_types=1);
 namespace IQ2i\VigieBundle\Tests\Monolog;
 
 use IQ2i\VigieBundle\Monolog\EcsFormatter;
+use IQ2i\VigieBundle\Monolog\OversizeAwareSyslogUdpHandler;
 use IQ2i\VigieBundle\Monolog\SyslogHandlerFactory;
 use Monolog\Handler\NullHandler;
 use Monolog\Handler\SyslogHandler;
-use Monolog\Handler\SyslogUdpHandler;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -84,7 +84,7 @@ final class SyslogHandlerFactoryTest extends TestCase
 
         $handler = SyslogHandlerFactory::create(true, '127.0.0.1', '5514', 'local0', 'vigie', '4096', $formatter = new EcsFormatter(false));
 
-        self::assertInstanceOf(SyslogUdpHandler::class, $handler);
+        self::assertInstanceOf(OversizeAwareSyslogUdpHandler::class, $handler);
         self::assertSame($formatter, $handler->getFormatter());
     }
 }
