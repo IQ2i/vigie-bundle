@@ -552,6 +552,7 @@ final class IQ2iVigieBundle extends AbstractBundle
                         $syslog['ident'],
                         $syslog['max_length'],
                         service('iq2i_vigie.formatter.ecs.syslog'),
+                        service('logger')->ignoreOnInvalid(),
                     ]);
 
                 $handlers[] = new Reference('iq2i_vigie.syslog_handler');

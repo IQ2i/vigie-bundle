@@ -108,7 +108,8 @@ iq2i_vigie:
   `"\n"`, which rsyslog would otherwise escape as a literal `#012` glued to the JSON.
 - `max_length` is the largest datagram sent, header included. A line is roughly 1.5 KB and grows with
   `context`; keep it above that and not above the collector's own limit (CrowdSec's `max_message_len`). A
-  datagram past it is truncated, and a truncated line is no longer valid JSON.
+  datagram past it is truncated, and a truncated line is no longer valid JSON. Vigie logs a warning on the
+  application's own logger (`event_id`, `type`, `size`, never the document) each time that happens.
 
 UDP is fire-and-forget: with the collector down, the request still answers normally and the file is still
 written.
