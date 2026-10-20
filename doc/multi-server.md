@@ -82,6 +82,10 @@ iq2i_vigie:
   with the build machine's hostname instead of the node's own.
 - A string sets it explicitly: an env placeholder for a container whose own `gethostname()` is a
   throwaway id rather than a stable node name, `hostname: '%env(HOSTNAME)%'`.
+- Under Docker, `gethostname()` (and the `HOSTNAME` environment variable) is the container id, e.g.
+  `acd534a62d0c`, unless the service sets `hostname:` itself. Fine in production where containers are
+  replaced anyway, noisy in local development. Give the service a stable `hostname:` in `compose.yaml`, or
+  set `hostname: '%env(VIGIE_HOSTNAME)%'` per environment.
 - `false` omits `host.hostname` entirely, for a stream that leaves your infrastructure (a managed SIEM, a
   third party), where a server naming convention has no business being disclosed.
 
