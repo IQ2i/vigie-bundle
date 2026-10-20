@@ -15,6 +15,7 @@ namespace IQ2i\VigieBundle\Tests\Functional;
 
 use IQ2i\VigieBundle\Monolog\EcsDocument;
 use Monolog\Handler\TestHandler;
+use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
 
 final class EcsOutputTest extends FunctionalTestCase
 {
@@ -23,6 +24,7 @@ final class EcsOutputTest extends FunctionalTestCase
         @unlink($this->logPath('ecs_output'));
         @unlink($this->logPath('ecs_output_custom_handler'));
         @unlink($this->logPath('hostname_disabled'));
+        @unlink($this->logPath('syslog_output'));
     }
 
     public function testATrackedRequestIsWrittenAsAnEcsLine(): void
@@ -91,6 +93,88 @@ final class EcsOutputTest extends FunctionalTestCase
 
         $context = $records[0]->context;
         self::assertSame('http_request', self::node($context['vigie'] ?? null)['type'] ?? null);
+    }
+
+    public function testSyslogIsSentOnTopOfTheDefaultFileWhenEnabled(): void
+    {
+        $server = $this->udpServer();
+        putenv('VIGIE_TEST_SYSLOG_ENABLED=1');
+
+        try {
+            $client = self::createClient(['environment' => 'syslog_output']);
+            $client->disableReboot();
+            $client->request('GET', '/ping');
+        } finally {
+            putenv('VIGIE_TEST_SYSLOG_ENABLED');
+        }
+
+        $datagram = $this->receive($server);
+        self::assertIsString($datagram);
+        self::assertStringContainsString('vigie-test', $datagram);
+
+        $json = substr($datagram, (int) strpos($datagram, '{'));
+        self::assertStringEndsNotWith("\n", $json);
+
+        /** @var array<string, mixed> $data */
+        $data = json_decode($json, true, flags: \JSON_THROW_ON_ERROR);
+        self::assertSame('http_request', self::node($data['vigie'] ?? null)['type'] ?? null);
+
+        self::assertFileExists($this->logPath('syslog_output'));
+    }
+
+    public function testSyslogSwitchedOffByItsEnvPlaceholderStillWritesTheFile(): void
+    {
+        $server = $this->udpServer();
+        putenv('VIGIE_TEST_SYSLOG_ENABLED=0');
+
+        try {
+            $client = self::createClient(['environment' => 'syslog_output']);
+            $client->disableReboot();
+            $client->request('GET', '/ping');
+        } finally {
+            putenv('VIGIE_TEST_SYSLOG_ENABLED');
+        }
+
+        self::assertNull($this->receive($server));
+        self::assertFileExists($this->logPath('syslog_output'));
+    }
+
+    public function testAnOutOfRangeSyslogPortIsRejectedAtCompileTime(): void
+    {
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessageMatches('/output\.syslog\.port/');
+
+        self::bootKernel(['environment' => 'syslog_invalid_port']);
+    }
+
+    /**
+     * @return resource a non-blocking UDP socket on a free local port, exported as VIGIE_TEST_SYSLOG_PORT
+     */
+    private function udpServer()
+    {
+        $server = stream_socket_server('udp://127.0.0.1:0', $errno, $error, \STREAM_SERVER_BIND);
+        self::assertNotFalse($server, (string) $error);
+
+        putenv('VIGIE_TEST_SYSLOG_PORT='.substr((string) strrchr((string) stream_socket_get_name($server, false), ':'), 1));
+
+        return $server;
+    }
+
+    /**
+     * @param resource $server
+     */
+    private function receive($server): ?string
+    {
+        $read = [$server];
+        $write = $except = null;
+
+        if (1 !== stream_select($read, $write, $except, 1)) {
+            return null;
+        }
+
+        $datagram = stream_socket_recvfrom($server, 65535);
+
+        return \is_string($datagram) ? $datagram : null;
     }
 
     private function logPath(string $environment): string

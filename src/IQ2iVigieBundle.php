@@ -21,6 +21,7 @@ use IQ2i\VigieBundle\EventSubscriber\SecurityActivitySubscriber;
 use IQ2i\VigieBundle\EventSubscriber\ThreatEnforcementSubscriber;
 use IQ2i\VigieBundle\EventSubscriber\TrackingAttributeSubscriber;
 use IQ2i\VigieBundle\Http\TrackingDecider;
+use IQ2i\VigieBundle\Monolog\SyslogHandlerFactory;
 use IQ2i\VigieBundle\Processor\ActivityProcessorInterface;
 use IQ2i\VigieBundle\Recorder\Pseudonymizer;
 use IQ2i\VigieBundle\Recorder\RecordingOptions;
@@ -36,6 +37,7 @@ use IQ2i\VigieBundle\Threat\Ingest\IngestController;
 use IQ2i\VigieBundle\Threat\ThreatChecker;
 use IQ2i\VigieBundle\Threat\ThreatProviderInterface;
 use IQ2i\VigieBundle\Threat\ThreatSynchronizer;
+use Monolog\Handler\HandlerInterface;
 use Monolog\Handler\StreamHandler;
 use Monolog\Logger;
 use Symfony\Bundle\WebProfilerBundle\WebProfilerBundle;
@@ -106,6 +108,43 @@ final class IQ2iVigieBundle extends AbstractBundle
                             ->info('Service ids implementing Monolog\Handler\HandlerInterface. Empty (the default) makes Vigie create a single StreamHandler on "path". Once set, configure each handler\'s own formatter (e.g. \'iq2i_vigie.formatter.ecs\'). See doc/storage.md.')
                             ->scalarPrototype()->end()
                             ->defaultValue([])
+                        ->end()
+                        ->arrayNode('syslog')
+                            ->addDefaultsIfNotSet()
+                            ->info('Also sends every activity to syslog, on top of "path"/"handlers". See doc/storage.md#sending-to-syslog.')
+                            ->children()
+                                ->variableNode('enabled')
+                                    ->defaultFalse()
+                                    ->info('true, false, or an env placeholder such as "%env(bool:VIGIE_SYSLOG_ENABLED)%" to switch syslog on per environment without a rebuild. Read at runtime, never at container compile time.')
+                                    ->validate()
+                                        ->ifTrue(static fn (mixed $v): bool => !\is_bool($v) && (!\is_string($v) || '' === trim($v)))
+                                        ->thenInvalid('iq2i_vigie.output.syslog.enabled must be true, false, or a non-empty string (an env placeholder), got %s.')
+                                    ->end()
+                                ->end()
+                                ->scalarNode('host')
+                                    ->defaultNull()
+                                    ->info('Remote syslog collector, sent RFC 5424 datagrams over UDP (needs ext-sockets). Null writes to the machine\'s own syslog (syslog(3)) instead.')
+                                ->end()
+                                ->scalarNode('port')
+                                    ->defaultValue(514)
+                                    ->info('UDP port of "host". Ignored when "host" is null. Accepts an env placeholder.')
+                                    ->validate()->always(self::validateIntOrPlaceholder('output.syslog.port', 65535))->end()
+                                ->end()
+                                ->scalarNode('facility')
+                                    ->defaultValue('local0')
+                                    ->cannotBeEmpty()
+                                ->end()
+                                ->scalarNode('ident')
+                                    ->defaultValue('vigie')
+                                    ->cannotBeEmpty()
+                                    ->info('Syslog program name. A CrowdSec parser filtering on evt.Parsed.program needs it to match, see crowdsec/parsers/s01-parse/vigie-ecs-syslog.yaml.')
+                                ->end()
+                                ->scalarNode('max_length')
+                                    ->defaultValue(8192)
+                                    ->info('Largest UDP datagram sent, in bytes, header included. Must hold a whole document and not exceed the collector\'s own limit (CrowdSec\'s max_message_len): a truncated line is invalid JSON.')
+                                    ->validate()->always(self::validateIntOrPlaceholder('output.syslog.max_length', 65023))->end()
+                                ->end()
+                            ->end()
                         ->end()
                     ->end()
                 ->end()
@@ -338,6 +377,30 @@ final class IQ2iVigieBundle extends AbstractBundle
     /**
      * @return \Closure(mixed): mixed
      */
+    private static function validateIntOrPlaceholder(string $optionName, int $max): \Closure
+    {
+        // No lower bound here: while compiling, an "%env(int:...)%" placeholder is swapped for 0, which a
+        // literal 0 cannot be told apart from. SyslogHandlerFactory enforces it on the resolved value.
+        return static function (mixed $value) use ($optionName, $max): int|string {
+            if (\is_string($value) && str_contains($value, '%')) {
+                return $value;
+            }
+
+            if (!\is_int($value) && !(\is_string($value) && ctype_digit($value))) {
+                throw new \InvalidArgumentException(\sprintf('iq2i_vigie.%s must be an integer or an env placeholder, got %s.', $optionName, get_debug_type($value)));
+            }
+
+            if ((int) $value > $max) {
+                throw new \InvalidArgumentException(\sprintf('iq2i_vigie.%s must be at most %d, got %d.', $optionName, $max, (int) $value));
+            }
+
+            return (int) $value;
+        };
+    }
+
+    /**
+     * @return \Closure(mixed): mixed
+     */
     private static function validatePatterns(string $optionName): \Closure
     {
         return static function (mixed $patterns) use ($optionName): array {
@@ -459,7 +522,7 @@ final class IQ2iVigieBundle extends AbstractBundle
         }
 
         if ('monolog' === $storage) {
-            /** @var array{path: string, handlers: list<string>} $outputConfig */
+            /** @var array{path: string, handlers: list<string>, syslog: array{enabled: bool|string, host: ?string, port: int|string, facility: string, ident: string, max_length: int|string}} $outputConfig */
             $outputConfig = $config['output'];
 
             if ([] === $outputConfig['handlers']) {
@@ -471,6 +534,27 @@ final class IQ2iVigieBundle extends AbstractBundle
                 $handlers = [new Reference('iq2i_vigie.default_handler')];
             } else {
                 $handlers = array_map(static fn (string $id): Reference => new Reference($id), $outputConfig['handlers']);
+            }
+
+            $syslog = $outputConfig['syslog'];
+
+            // A literal false registers nothing; an env placeholder is a non-empty string, so it can only be
+            // decided at runtime, by the factory.
+            if (false !== $syslog['enabled']) {
+                $container->services()
+                    ->set('iq2i_vigie.syslog_handler', HandlerInterface::class)
+                    ->factory([SyslogHandlerFactory::class, 'create'])
+                    ->args([
+                        $syslog['enabled'],
+                        $syslog['host'],
+                        $syslog['port'],
+                        $syslog['facility'],
+                        $syslog['ident'],
+                        $syslog['max_length'],
+                        service('iq2i_vigie.formatter.ecs.syslog'),
+                    ]);
+
+                $handlers[] = new Reference('iq2i_vigie.syslog_handler');
             }
 
             $container->services()

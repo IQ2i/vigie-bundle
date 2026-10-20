@@ -80,37 +80,42 @@ other configured handler gets the raw IP too.
 
 ## Sending to syslog
 
-No dedicated option for this. `output.handlers` already takes any Monolog handler, and Monolog ships
-`SyslogHandler` (local syslog) and `SyslogUdpHandler` (UDP to a remote collector). Useful for a fleet of
-load-balanced servers feeding one central collector without a log-shipping agent installed on every node;
-see [doc/multi-server.md](multi-server.md) for the two topologies, when to prefer one over the other, and
-the CrowdSec acquisition side.
-
-```yaml
-# config/services.yaml
-services:
-    app.vigie.syslog_handler:
-        class: Monolog\Handler\SyslogHandler
-        arguments: ['vigie', 'local0']  # ident, facility
-        calls:
-            - setFormatter: ['@iq2i_vigie.formatter.ecs.syslog']
-```
+`output.syslog` adds a syslog handler **on top of** the file handler (or whichever `output.handlers` you
+listed), so the NDJSON file is always written and syslog is optional. Useful for a fleet of load-balanced
+servers feeding one central collector without a log-shipping agent installed on every node; see
+[doc/multi-server.md](multi-server.md) for the two topologies, when to prefer one over the other, and the
+CrowdSec acquisition side.
 
 ```yaml
 # config/packages/vigie.yaml
 iq2i_vigie:
     output:
-        handlers: ['app.vigie.syslog_handler']
+        syslog:
+            enabled: '%env(bool:VIGIE_SYSLOG_ENABLED)%'
+            host: '%env(VIGIE_SYSLOG_HOST)%'   # omit to write to the machine's own syslog instead
+            port: 514
+            facility: local0
+            ident: vigie
+            max_length: 8192
 ```
 
-Use `iq2i_vigie.formatter.ecs.syslog`, not `iq2i_vigie.formatter.ecs`. The default formatter ends each
-line with `"\n"`, which `SyslogHandler` hands straight to `syslog()` untrimmed; rsyslog then escapes that
-trailing newline as a literal `#012` glued to the end of the JSON, breaking it for anything parsing the
-line downstream. `iq2i_vigie.formatter.ecs.syslog` is the exact same document without it, for a transport
-that already frames one message per call.
+- `enabled` accepts an env placeholder and is read at runtime, so one build ships everywhere and syslog
+  is switched on per environment. While it is off, no socket is opened and `ext-sockets` is not needed.
+- With a `host`, Vigie sends RFC 5424 datagrams over UDP (`Monolog\Handler\SyslogUdpHandler`, needs the
+  `sockets` PHP extension, checked when the first activity is recorded). Without one, it writes through
+  `syslog(3)` (`SyslogHandler`) for a local rsyslog to relay.
+- The document is formatted by `iq2i_vigie.formatter.ecs.syslog`: the same line without the trailing
+  `"\n"`, which rsyslog would otherwise escape as a literal `#012` glued to the JSON.
+- `max_length` is the largest datagram sent, header included. A line is roughly 1.5 KB and grows with
+  `context`; keep it above that and not above the collector's own limit (CrowdSec's `max_message_len`). A
+  datagram past it is truncated, and a truncated line is no longer valid JSON.
 
-Sending UDP instead (`Monolog\Handler\SyslogUdpHandler`) needs the `sockets` PHP extension. Monolog throws
-a clear `MissingExtensionException` if it's missing, on the first recorded activity.
+UDP is fire-and-forget: with the collector down, the request still answers normally and the file is still
+written.
+
+Prefer declaring the handler yourself when you need something `output.syslog` does not cover (TCP, a
+different RFC): `output.handlers` still takes any Monolog handler, with `iq2i_vigie.formatter.ecs.syslog`
+as its formatter.
 
 ## Writing your own storage
 
