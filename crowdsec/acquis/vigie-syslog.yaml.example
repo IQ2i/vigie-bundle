@@ -1,0 +1,11 @@
+# /etc/crowdsec/acquis.d/vigie-syslog.yaml — UDP syslog alternative to vigie.yaml.example, see
+# doc/multi-server.md. Needs the crowdsecurity/linux collection (parser crowdsecurity/syslog-logs) and
+# parsers/s01-parse/vigie-ecs-syslog.yaml.
+source: syslog
+listen_addr: 0.0.0.0
+listen_port: 514
+# A Vigie line routinely exceeds the 2048 bytes default; a truncated line is invalid JSON and is
+# silently left unparsed. Keep this at least equal to the handler's $maxLength.
+max_message_len: 8192
+labels:
+  type: syslog

@@ -66,9 +66,19 @@ iq2i_vigie:
 ```
 
 For a load-balanced fleet shipping to syslog instead of one file per node, see
-[doc/multi-server.md](../doc/multi-server.md#sending-to-syslog) and adjust `acquis/vigie.yaml.example`
-accordingly (a `type: syslog` datasource instead of `filenames`); the parser's `filter` still matches on
-`evt.Line.Labels.type`, set by whichever acquisition method is used.
+[doc/multi-server.md](../doc/multi-server.md#sending-to-syslog), then use the syslog variants instead of
+the file ones:
+
+```bash
+cp acquis/vigie-syslog.yaml.example /etc/crowdsec/acquis.d/vigie-syslog.yaml
+cp parsers/s01-parse/vigie-ecs-syslog.yaml /etc/crowdsec/parsers/s01-parse/
+cscli collections install crowdsecurity/linux   # provides crowdsecurity/syslog-logs, required
+```
+
+`vigie-ecs-syslog` filters on `evt.Parsed.program == 'vigie'` and reads the JSON from
+`evt.Parsed.message`, both only available once the hub parser `crowdsecurity/syslog-logs` has split the
+syslog header off, so that hub parser is a hard prerequisite, not an option. `vigie` is the handler's
+`ident`. Both parsers expose the same `evt.Meta` fields, so the scenarios work with either.
 
 For one CrowdSec instance shared across several client applications instead of one application's own
 fleet, see [doc/multi-tenant.md](../doc/multi-tenant.md): the scenarios here need adapting before that's
@@ -76,6 +86,8 @@ safe, since a `username`/`session` decision isn't namespaced by application as s
 
 ## What's here
 
+- `parsers/s01-parse/vigie-ecs-syslog.yaml`: the same mapping for lines received through CrowdSec's
+  `syslog` datasource, see above.
 - `parsers/s01-parse/vigie-ecs.yaml`: maps the ECS document's fields into `evt.Meta.*`
   (`vigie_type`, `tenant` (`service.name`, see [doc/multi-tenant.md](../doc/multi-tenant.md)),
   `source_ip`, `http_path`, `http_status`, `route`, `firewall`, `user_name`, `user_hash`,
