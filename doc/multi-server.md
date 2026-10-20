@@ -38,6 +38,16 @@ different value on that node. There is no error: the lines are all individually 
 quietly stops working across that one node. Roll `APP_SECRET` (or `record.hash_secret`) on every node at
 once; a staggered rotation has the same effect as a misconfigured node until it finishes.
 
+## `record.ip_address` on the emitting kernel
+
+`vigie-login-bruteforce`, `vigie-credential-stuffing` and `vigie-csrf-wave` ban by `source_ip`. Vigie's
+default `record.ip_address: anonymize` masks the host part (`1.2.3.4` → `1.2.3.0`), so a scenario fed that
+output only sees a `/24`/`/64` and its decisions never match a real visitor, with no error anywhere. Set
+`record.ip_address: true` on **every kernel that emits to CrowdSec**. When the kernel running
+`vigie:threat:sync` is a different one from the emitter (a separate admin and manager application, say),
+the setting that matters is the emitter's, not the syncing kernel's. See
+[The pseudonymization pitfall](threat.md#the-pseudonymization-pitfall).
+
 ## `framework.trusted_proxies`
 
 Already covered in [doc/recording.md](recording.md#what-gets-recorded) and
