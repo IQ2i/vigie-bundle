@@ -14,6 +14,8 @@ declare(strict_types=1);
 namespace IQ2i\VigieBundle\Threat;
 
 use IQ2i\VigieBundle\Event\ThreatDecisionsSynced;
+use IQ2i\VigieBundle\Model\ThreatDecision;
+use IQ2i\VigieBundle\Storage\ThreatDecisionQuery;
 use IQ2i\VigieBundle\Storage\ThreatDecisionStoreInterface;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Log\LoggerInterface;
@@ -65,6 +67,9 @@ final readonly class ThreatSynchronizer
     {
         $now = $this->clock->now();
 
+        // Resolved before clear()/apply() drop the rows it looks up.
+        $removed = $startup ? $batch->removed : $this->heldDecisions($batch->removed);
+
         if ($startup) {
             $this->store->clear($provider);
         }
@@ -86,16 +91,43 @@ final readonly class ThreatSynchronizer
 
         $purged = $purge ? $this->store->purgeExpired($now) : 0;
 
-        $this->dispatch(new ThreatDecisionsSynced($provider, $batch->added, $batch->removed, $startup, $now));
+        $this->dispatch(new ThreatDecisionsSynced($provider, $batch->added, $removed, $startup, $now));
 
         return [
             'provider' => $provider,
             'startup' => $startup,
             'added' => \count($batch->added),
-            'removed' => \count($batch->removed),
+            'removed' => \count($removed),
             'skipped' => $batch->skipped,
             'purged' => $purged,
         ];
+    }
+
+    /**
+     * A provider may report the same removal again on a later delta (the LAPI does); only what the
+     * store still holds is a removal worth reporting.
+     *
+     * @param list<ThreatDecision> $removed
+     *
+     * @return list<ThreatDecision>
+     */
+    private function heldDecisions(array $removed): array
+    {
+        $held = [];
+
+        foreach ($removed as $decision) {
+            $stored = $this->store->find(new ThreatDecisionQuery(scopes: [$decision->scope], value: $decision->value, provider: $decision->provider));
+
+            foreach ($stored as $candidate) {
+                if ($candidate->key() === $decision->key()) {
+                    $held[] = $decision;
+
+                    break;
+                }
+            }
+        }
+
+        return $held;
     }
 
     private function dispatch(ThreatDecisionsSynced $event): void

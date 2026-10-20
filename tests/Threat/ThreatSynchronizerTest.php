@@ -188,6 +188,45 @@ final class ThreatSynchronizerTest extends TestCase
         $synchronizer->sync();
     }
 
+    public function testARemovalIsOnlyReportedOnce(): void
+    {
+        $synchronizer = $this->synchronizer();
+        $first = $this->decision('1');
+
+        $this->provider->nextBatch = new ThreatSyncBatch(added: [$first]);
+        $synchronizer->sync();
+
+        $this->provider->nextBatch = new ThreatSyncBatch(removed: [$first]);
+        self::assertSame(1, $synchronizer->sync()['removed']);
+
+        $second = $this->decision('2', '5.6.7.8');
+        $this->provider->nextBatch = new ThreatSyncBatch(added: [$second], removed: [$first]);
+        $report = $synchronizer->sync();
+
+        self::assertSame(1, $report['added']);
+        self::assertSame(0, $report['removed']);
+    }
+
+    public function testTheEventOnlyCarriesRemovalsTheStoreHeld(): void
+    {
+        $dispatcher = new EventDispatcher();
+        $observed = null;
+        $dispatcher->addListener(ThreatDecisionsSynced::class, static function (ThreatDecisionsSynced $event) use (&$observed): void {
+            $observed = $event;
+        });
+        $synchronizer = $this->synchronizer($dispatcher);
+
+        $held = $this->decision('1');
+        $this->provider->nextBatch = new ThreatSyncBatch(added: [$held]);
+        $synchronizer->sync();
+
+        $this->provider->nextBatch = new ThreatSyncBatch(removed: [$held, $this->decision('unknown', '9.9.9.9')]);
+        $synchronizer->sync();
+
+        self::assertInstanceOf(ThreatDecisionsSynced::class, $observed);
+        self::assertSame(['fake:1'], array_map(static fn (ThreatDecision $d): string => $d->key(), $observed->removed));
+    }
+
     public function testApplyBatchWorksWithoutAProvider(): void
     {
         $synchronizer = new ThreatSynchronizer(null, $this->store);
