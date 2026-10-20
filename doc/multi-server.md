@@ -161,8 +161,10 @@ services:
             $port: 514
             $facility: 'local0'
             $ident: 'vigie'
-            $maxLength: 1024  # Monolog otherwise defaults to the theoretical UDP maximum,
-                               # which routers and firewalls along the way silently truncate or drop
+            $maxLength: 8192  # Monolog otherwise defaults to the theoretical UDP maximum, which routers and
+                               # firewalls along the way silently truncate or drop. Must hold a whole line
+                               # (~1.5 KB, more with a large context) and not exceed the collector's
+                               # max_message_len
         calls:
             - setFormatter: ['@iq2i_vigie.formatter.ecs.syslog']
 ```
@@ -178,12 +180,13 @@ PHP sends RFC-framed UDP datagrams straight to a remote syslog server, CrowdSec'
 for instance:
 
 ```yaml
-# /etc/crowdsec/acquis.d/vigie.yaml
+# /etc/crowdsec/acquis.d/vigie-syslog.yaml
 source: syslog
 listen_addr: 0.0.0.0
 listen_port: 514
+max_message_len: 8192
 labels:
-  type: vigie_ecs
+  type: syslog
 ```
 
 Simpler, one moving part and nothing to run on the node beyond PHP itself, but be aware of what CrowdSec's
@@ -200,13 +203,18 @@ handler is first instantiated (the first recorded activity), not at container co
 ### The CrowdSec parser, either way
 
 The `vigie-ecs` parser in [doc/siem.md](siem.md#crowdsec-acquisition) is written against a plain NDJSON
-file: `evt.Line.Raw` is exactly one JSON document. With topology A that stays true, since rsyslog already
-stripped its own header before writing the file CrowdSec acquires. With topology B, whether the syslog
-datasource hands the parser the JSON alone or the JSON still wrapped in a syslog header is a detail of the
-CrowdSec version in use, verify it against your own instance before relying on the existing parser
-unchanged. A `JsonExtract` failing silently (every `parsed` field empty, no error logged) is the symptom of
-a header still attached. This is also an argument for preferring topology A outright: it sidesteps the
-question entirely.
+file: `evt.Line.Raw` is exactly one JSON document and the acquisition label is `vigie_ecs`. With topology A
+that stays true, since rsyslog already stripped its own header before writing the file CrowdSec acquires.
+
+With topology B it does not work as is. CrowdSec's `syslog` datasource labels every line `syslog`, and the
+JSON document only becomes available as `evt.Parsed.message` after the hub parser
+`crowdsecurity/syslog-logs` (collection `crowdsecurity/linux`) ran. Use
+[`vigie-ecs-syslog.yaml`](../crowdsec/parsers/s01-parse/vigie-ecs-syslog.yaml) instead: it filters on
+`evt.Parsed.program == 'vigie'` (the handler's `ident`, `vigie` in the examples above) and extracts the
+same `evt.Meta` fields, so the scenarios are unchanged. Pair it with
+[`vigie-syslog.yaml.example`](../crowdsec/acquis/vigie-syslog.yaml.example), which raises
+`max_message_len`. Symptom of using the file parser by mistake, or of a missing hub parser: events show up
+in `cscli metrics` as acquired but no `evt.Meta.*` is ever set, with no error logged.
 
 ## Keeping a line under 2048 bytes
 
