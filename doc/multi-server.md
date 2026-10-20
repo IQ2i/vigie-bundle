@@ -152,29 +152,20 @@ the queue is what makes this durable where UDP (topology B) isn't.
 ### B. Direct UDP to a remote collector
 
 ```yaml
-# config/services.yaml
-services:
-    app.vigie.syslog_handler:
-        class: Monolog\Handler\SyslogUdpHandler
-        arguments:
-            $host: '%env(VIGIE_SYSLOG_HOST)%'
-            $port: 514
-            $facility: 'local0'
-            $ident: 'vigie'
-            $maxLength: 8192  # Monolog otherwise defaults to the theoretical UDP maximum, which routers and
-                               # firewalls along the way silently truncate or drop. Must hold a whole line
-                               # (~1.5 KB, more with a large context) and not exceed the collector's
-                               # max_message_len
-        calls:
-            - setFormatter: ['@iq2i_vigie.formatter.ecs.syslog']
-```
-
-```yaml
 # config/packages/vigie.yaml
 iq2i_vigie:
     output:
-        handlers: ['app.vigie.syslog_handler']
+        syslog:
+            enabled: '%env(bool:VIGIE_SYSLOG_ENABLED)%'
+            host: '%env(VIGIE_SYSLOG_HOST)%'
+            port: 514
+            facility: local0
+            ident: vigie
+            max_length: 8192  # a line is ~1.5 KB and grows with `context`; never above the collector's max_message_len
 ```
+
+The file output stays on, `output.syslog` only adds a leg to it. See
+[doc/storage.md](storage.md#sending-to-syslog) for each option.
 
 PHP sends RFC-framed UDP datagrams straight to a remote syslog server, CrowdSec's own `syslog` datasource
 for instance:
@@ -192,7 +183,7 @@ labels:
 Simpler, one moving part and nothing to run on the node beyond PHP itself, but be aware of what CrowdSec's
 own documentation says about this datasource: UDP only, a default `max_message_len` of 2048 bytes, and a
 real risk of dropping messages past a few hundred events per second, with rsyslog plus a file acquisition
-(topology A) recommended for anything beyond a small deployment. `$maxLength` above caps what Vigie itself
+(topology A) recommended for anything beyond a small deployment. `max_length` above caps what Vigie itself
 sends, but a datagram that exceeds it is truncated, not split, and a truncated ECS line is no longer valid
 JSON. See [Keeping a line under 2048 bytes](#keeping-a-line-under-2048-bytes) before choosing this topology
 for anything beyond a proof of concept.

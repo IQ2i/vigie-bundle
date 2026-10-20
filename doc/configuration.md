@@ -41,6 +41,21 @@ iq2i_vigie:
         # with its own ECS formatter. See doc/storage.md for wiring a
         # syslog handler this way.
         handlers: []
+        # Also sends every activity to syslog, on top of the above. See
+        # doc/storage.md#sending-to-syslog.
+        syslog:
+            # true, false, or an env placeholder, read at runtime.
+            enabled: false
+            # Remote collector (UDP, needs ext-sockets); null writes to the
+            # machine's own syslog instead.
+            host: null
+            port: 514
+            facility: local0
+            # Syslog program name; a CrowdSec parser filtering on
+            # evt.Parsed.program must match it.
+            ident: vigie
+            # Largest datagram sent, in bytes, header included.
+            max_length: 8192
 
     # Individually toggle which fields get recorded, wherever the activity
     # comes from. A field disabled here is nulled out (or pseudonymized)
